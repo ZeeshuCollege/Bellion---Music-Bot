@@ -168,33 +168,37 @@ class GuildPlayer:
         except Exception:
             pass
 
-    async def pause(self) -> bool:
+    async def pause(self, update_card: bool = True) -> bool:
         """Pause current track."""
+        if not self.current:
+            return False
         if self.voice_client and self.voice_client.is_playing():
             self.voice_client.pause()
-            self.is_paused = True
-            self._pause_time = time.time()
+        self.is_paused = True
+        self._pause_time = time.time()
+        if update_card:
             await self.update_now_playing_card()
-            return True
-        return False
+        return True
 
-    async def resume(self) -> bool:
+    async def resume(self, update_card: bool = True) -> bool:
         """Resume playback."""
+        if not self.current:
+            return False
         if self.voice_client and self.voice_client.is_paused():
             self.voice_client.resume()
-            self.is_paused = False
-            if self._pause_time > 0:
-                self._accumulated_pause += time.time() - self._pause_time
-                self._pause_time = 0.0
+        self.is_paused = False
+        if self._pause_time > 0:
+            self._accumulated_pause += time.time() - self._pause_time
+            self._pause_time = 0.0
+        if update_card:
             await self.update_now_playing_card()
-            return True
-        return False
+        return True
 
-    async def toggle_play_pause(self) -> bool:
+    async def toggle_play_pause(self, update_card: bool = True) -> bool:
         if self.is_paused:
-            return await self.resume()
+            return await self.resume(update_card=update_card)
         else:
-            return await self.pause()
+            return await self.pause(update_card=update_card)
 
     async def skip(self) -> Optional[Track]:
         """Skip current track."""

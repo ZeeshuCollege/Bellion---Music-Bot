@@ -22,8 +22,11 @@ class NowPlayingLayoutView(ui.LayoutView):
         
         container = ui.Container()
         
-        # 1. Header: 💽 Now Playing
-        header = ui.TextDisplay("### :minidisc: Now Playing")
+        # 1. Header: 💽 Now Playing (or ⏸️ Paused)
+        if self.player.is_paused:
+            header = ui.TextDisplay("### :pause_button: Paused")
+        else:
+            header = ui.TextDisplay("### :minidisc: Now Playing")
         container.add_item(header)
         
         track = self.player.current
@@ -50,11 +53,11 @@ class NowPlayingLayoutView(ui.LayoutView):
         footer = ui.TextDisplay(POWERED_BY_TEXT)
         container.add_item(footer)
         
-        # 3. Action Row 1: Pause/Resume, Skip, Stop (Danger), Loop
+        # 3. Action Row: Pause/Resume, Skip, Loop, Shuffle
         pause_label = "Resume" if self.player.is_paused else "Pause"
-        btn_pause = ui.Button(label=pause_label, style=discord.ButtonStyle.secondary, custom_id="v2_pause")
+        pause_style = discord.ButtonStyle.primary if self.player.is_paused else discord.ButtonStyle.secondary
+        btn_pause = ui.Button(label=pause_label, style=pause_style, custom_id="v2_pause")
         btn_skip = ui.Button(label="Skip", style=discord.ButtonStyle.secondary, custom_id="v2_skip")
-        btn_stop = ui.Button(label="Stop", style=discord.ButtonStyle.danger, custom_id="v2_stop")
         
         loop_labels = {
             "off": "Loop",
@@ -64,19 +67,15 @@ class NowPlayingLayoutView(ui.LayoutView):
         loop_label = loop_labels.get(self.player.loop_mode, "Loop")
         btn_loop = ui.Button(label=loop_label, style=discord.ButtonStyle.secondary, custom_id="v2_loop")
         
+        btn_shuffle = ui.Button(label="Shuffle", style=discord.ButtonStyle.secondary, custom_id="v2_shuffle")
+        
         btn_pause.callback = self.on_pause
         btn_skip.callback = self.on_skip
-        btn_stop.callback = self.on_stop
         btn_loop.callback = self.on_loop
-        
-        row1 = ui.ActionRow(btn_pause, btn_skip, btn_stop, btn_loop)
-        container.add_item(row1)
-        
-        # 4. Action Row 2: Shuffle
-        btn_shuffle = ui.Button(label="Shuffle", style=discord.ButtonStyle.secondary, custom_id="v2_shuffle")
         btn_shuffle.callback = self.on_shuffle
-        row2 = ui.ActionRow(btn_shuffle)
-        container.add_item(row2)
+        
+        row = ui.ActionRow(btn_pause, btn_skip, btn_loop, btn_shuffle)
+        container.add_item(row)
         
         self.add_item(container)
 
@@ -85,8 +84,18 @@ class NowPlayingLayoutView(ui.LayoutView):
             return False
         if not interaction.user.voice or not interaction.user.voice.channel:
             return False
-        vc = self.player.guild.voice_client
+        vc = self.player.guild.voice_client if self.player.guild else None
         if vc and interaction.user.voice.channel != vc.channel:
+            return False
+        return True
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if not self._check_voice(interaction):
+            await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+            return False
+        # Catch any legacy button clicks for "v2_stop" and redirect to pause without deleting card
+        if interaction.data and interaction.data.get("custom_id") == "v2_stop":
+            await self.on_pause(interaction)
             return False
         return True
 
@@ -94,10 +103,13 @@ class NowPlayingLayoutView(ui.LayoutView):
         if not self._check_voice(interaction):
             return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
         
+        if not self.player.current:
+            return await interaction.response.send_message("❌ Nothing is currently playing!", ephemeral=True)
+            
         if self.player.is_paused:
-            await self.player.resume()
+            await self.player.resume(update_card=False)
         else:
-            await self.player.pause()
+            await self.player.pause(update_card=False)
             
         self.rebuild()
         await interaction.response.edit_message(view=self)
@@ -113,15 +125,8 @@ class NowPlayingLayoutView(ui.LayoutView):
             await interaction.response.send_message("❌ Nothing is playing.", ephemeral=True)
 
     async def on_stop(self, interaction: discord.Interaction):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
-            
-        await self.player.stop()
-        view = StatusLayoutView(
-            title="### 🎵 Nothing is playing",
-            description="Playback stopped and queue cleared.\nUse `/play` to start a song."
-        )
-        await interaction.response.edit_message(view=view)
+        """Legacy handler: if an old stop button is clicked, pause instead of destroying the player card."""
+        await self.on_pause(interaction)
 
     async def on_loop(self, interaction: discord.Interaction):
         if not self._check_voice(interaction):
