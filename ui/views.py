@@ -302,3 +302,101 @@ class StatusLayoutView(ui.LayoutView):
             container.add_item(ui.TextDisplay(description))
             
         self.add_item(container)
+
+
+class SettingsLayoutView(ui.LayoutView):
+    """
+    Settings card using Discord Components V2.
+    """
+    def __init__(self, player, timeout: float = 120.0):
+        super().__init__(timeout=timeout)
+        self.player = player
+        self.rebuild()
+
+    def rebuild(self):
+        self.clear_items()
+        container = ui.Container()
+        container.add_item(ui.TextDisplay("### :gear: Audio Settings"))
+
+        vol_pct = int(self.player.volume * 100)
+        loop_display = {
+            "off": "Off",
+            "track": "Single Track",
+            "queue": "Entire Queue"
+        }.get(self.player.loop_mode, self.player.loop_mode.capitalize())
+        autoplay_display = "Enabled" if self.player.autoplay else "Disabled"
+
+        content = (
+            f"> **Volume:** `{vol_pct}%`\n"
+            f"> **Loop Mode:** `{loop_display}`\n"
+            f"> **Autoplay:** `{autoplay_display}`"
+        )
+        container.add_item(ui.TextDisplay(content))
+
+        btn_voldown = ui.Button(label="Vol -10%", style=discord.ButtonStyle.secondary)
+        btn_volup = ui.Button(label="Vol +10%", style=discord.ButtonStyle.secondary)
+        btn_loop = ui.Button(label="Loop Mode", style=discord.ButtonStyle.secondary)
+        btn_autoplay = ui.Button(label="Autoplay", style=discord.ButtonStyle.secondary)
+
+        btn_voldown.callback = self.on_voldown
+        btn_volup.callback = self.on_volup
+        btn_loop.callback = self.on_loop
+        btn_autoplay.callback = self.on_autoplay
+
+        row = ui.ActionRow(btn_voldown, btn_volup, btn_loop, btn_autoplay)
+        container.add_item(row)
+        self.add_item(container)
+
+    async def on_voldown(self, interaction: discord.Interaction):
+        self.player.set_volume(max(0.0, self.player.volume - 0.10))
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
+
+    async def on_volup(self, interaction: discord.Interaction):
+        self.player.set_volume(min(1.0, self.player.volume + 0.10))
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
+
+    async def on_loop(self, interaction: discord.Interaction):
+        self.player.cycle_loop()
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
+
+    async def on_autoplay(self, interaction: discord.Interaction):
+        self.player.autoplay = not self.player.autoplay
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
+
+
+class HelpSupportLayoutView(ui.LayoutView):
+    """
+    Help and support layout using Discord Components V2.
+    """
+    def __init__(self, timeout: Optional[float] = None):
+        super().__init__(timeout=timeout)
+        container = ui.Container()
+        container.add_item(ui.TextDisplay("### :scroll: Bellion Music - Command Guide"))
+        
+        content = (
+            "> **🎵 Music Commands:**\n"
+            "> `/play <query>` • `/search <query>` • `/pause` • `/resume` • `/skip` • `/stop`\n\n"
+            "> **📑 Queue & Playback:**\n"
+            "> `/nowplaying` • `/queue` • `/shuffle` • `/volume` • `/loop` • `/clear`\n\n"
+            "> **⚙️ Utility & Settings:**\n"
+            "> `/settings` • `/help` • `/ping`"
+        )
+        container.add_item(ui.TextDisplay(content))
+        container.add_item(ui.TextDisplay(POWERED_BY_TEXT))
+
+        btn_support = ui.Button(label="Support Server", url=SUPPORT_SERVER_URL, style=discord.ButtonStyle.link)
+        row = ui.ActionRow(btn_support)
+        container.add_item(row)
+        self.add_item(container)
+
+
+# Backward-compatibility aliases
+SettingsView = SettingsLayoutView
+HelpSupportView = HelpSupportLayoutView
+NowPlayingView = NowPlayingLayoutView
+QueueView = QueueLayoutView
+SearchView = SearchLayoutView
