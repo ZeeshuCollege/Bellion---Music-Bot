@@ -82,7 +82,7 @@ class GuildPlayer:
             if self.queue:
                 next_track = self.queue.pop(0)
             elif self.autoplay and self.history:
-                # Autoplay random track from library
+                # Autoplay: resolve related track from YouTube or local library
                 from music.library import library
                 all_tracks = library.get_all()
                 if all_tracks:
@@ -95,7 +95,9 @@ class GuildPlayer:
                         requester=self.bot.user
                     )
                 else:
-                    next_track = None
+                    from music.resolver import resolve_related_track
+                    last_track = self.history[-1]
+                    next_track = await resolve_related_track(last_track.title, last_track.artist)
             else:
                 next_track = None
 
@@ -112,7 +114,7 @@ class GuildPlayer:
         # Create FFmpeg audio source with volume (handles local and URLs)
         is_stream = next_track.source_type == "stream" or next_track.filepath.startswith("http")
         ffmpeg_opts = {
-            'options': '-vn -loglevel error'
+            'options': '-vn -loglevel error -nostdin'
         }
         if is_stream:
             ffmpeg_opts['before_options'] = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'

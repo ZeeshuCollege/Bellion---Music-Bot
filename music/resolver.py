@@ -68,3 +68,54 @@ async def resolve_url_track(query_or_url: str, requester: Optional[discord.Membe
         print(f"Error extracting audio for '{query_or_url}': {e}")
         return None
 
+async def resolve_related_track(title: str, artist: str = "") -> Optional[Track]:
+    """
+    Finds a related track on YouTube for seamless autoplay when queue ends.
+    """
+    query = f"ytsearch5:{title} {artist} mix"
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
+        'default_search': 'auto',
+        'extract_flat': False,
+        'noplaylist': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'web']
+            }
+        }
+    }
+
+    cookies_file = BASE_DIR / "cookies.txt"
+    if cookies_file.exists():
+        ydl_opts['cookiefile'] = str(cookies_file)
+
+    loop = asyncio.get_running_loop()
+    def _extract():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(query, download=False)
+
+    try:
+        data = await loop.run_in_executor(None, _extract)
+        if not data or 'entries' not in data or not data['entries']:
+            return None
+
+        # Filter out exact same title
+        clean_target = title.lower()
+        candidates = [e for e in data['entries'] if e and e.get('title') and clean_target not in e.get('title', '').lower()]
+        pick = candidates[0] if candidates else data['entries'][0]
+
+        return Track(
+            title=pick.get('title') or 'Related Track',
+            artist=pick.get('uploader') or pick.get('channel') or 'YouTube Music',
+            duration=float(pick.get('duration') or 0.0),
+            filepath=pick.get('url') or "",
+            requester=None,
+            thumbnail_url=pick.get('thumbnail'),
+            source_type='stream'
+        )
+    except Exception as e:
+        print(f"Autoplay resolution error: {e}")
+        return None
+

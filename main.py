@@ -1,6 +1,8 @@
 import asyncio
 import io
 import logging
+import os
+import socket
 import sys
 
 if sys.platform == "win32":
@@ -22,6 +24,20 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("BellionBot")
+
+# Single Instance Lock
+_instance_socket = None
+
+def acquire_single_instance_lock(port: int = 49281) -> bool:
+    """Ensures only one instance of the bot runs simultaneously to prevent gateway conflicts."""
+    global _instance_socket
+    try:
+        _instance_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        _instance_socket.bind(("127.0.0.1", port))
+        _instance_socket.listen(1)
+        return True
+    except OSError:
+        return False
 
 class BellionBot(commands.Bot):
     def __init__(self, message_content: bool = True):
@@ -46,16 +62,18 @@ class BellionBot(commands.Bot):
         # Scan local music library on startup
         library.reload()
         tracks = library.get_all()
-        logger.info(f"Loaded {len(tracks)} local test tracks into library:")
-        for t in tracks:
-            logger.info(f"  • {t['title']} ({int(t['duration'])}s) - {t['filepath']}")
+        if tracks:
+            logger.info(f"Loaded {len(tracks)} local track(s) into library.")
+        else:
+            logger.info("Local library: 0 local files (YouTube streaming engine active).")
 
-        # Synchronize slash commands globally
-        try:
-            synced = await self.tree.sync()
-            logger.info(f"Synced {len(synced)} slash commands globally.")
-        except Exception as e:
-            logger.error(f"Failed to sync slash commands: {e}")
+        # Sync slash commands only if explicitly requested via env to avoid Discord 503 gateway rate limits
+        if os.getenv("SYNC_ON_STARTUP", "false").lower() in ("true", "1"):
+            try:
+                synced = await self.tree.sync()
+                logger.info(f"Synced {len(synced)} slash commands globally.")
+            except Exception as e:
+                logger.error(f"Failed to sync slash commands: {e}")
 
     async def on_ready(self):
         activity = discord.Activity(
@@ -103,9 +121,9 @@ async def start_bot(message_content: bool):
         if ctx.author.id == MASTER_ID or (ctx.guild and ctx.author.guild_permissions.administrator):
             msg = await ctx.send("🔄 Syncing slash commands globally...")
             synced = await bot.tree.sync()
-            await msg.edit(content=f"✅ Successfully synced {len(synced)} slash commands!")
+            await msg.edit(content=f"✅ Successfully synced {len(synced)} slash commands globally!")
         else:
-            await ctx.send("❌ Only the Bot Master or an Administrator can use `!sync`.")
+            await ctx.send("❌ Only the Bot Master or an Administrator can use `,sync`.")
 
     # Global tree error handler
     @bot.tree.error
@@ -130,6 +148,15 @@ async def start_bot(message_content: bool):
 
 
 async def main():
+    if not acquire_single_instance_lock():
+        logger.critical("=" * 60)
+        logger.critical("❌ ERROR: Another instance of Bellion Music Bot is already running!")
+        logger.critical("❌ Running multiple instances with the same token causes Discord to")
+        logger.critical("   invalidate sessions and reject connections with 503 gateway errors.")
+        logger.critical("❌ Please stop the existing python process before starting a new one.")
+        logger.critical("=" * 60)
+        sys.exit(1)
+
     if not DISCORD_TOKEN:
         logger.error("No DISCORD_TOKEN found in .env! Please set DISCORD_TOKEN.")
         sys.exit(1)
