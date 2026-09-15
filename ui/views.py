@@ -404,12 +404,12 @@ class HelpDashboardLayoutView(ui.LayoutView):
         elif self.current_module == "music":
             container.add_item(ui.TextDisplay("### :musical_note: Music Commands Module"))
             music_text = (
-                "> `,play <song name / any link>` — Plays local audio tracks or web streams (YouTube, SoundCloud)\n"
+                "> `,play <song name / any link>` (alias: `,p`) — Plays local audio tracks or web streams\n"
                 "> `,pause` — Pauses current song playback\n"
                 "> `,resume` — Resumes paused track playback\n"
-                "> `,skip <Number>` — Skips the given number of songs (default: 1)\n"
-                "> `,stop` — Stops playback, clears queue, and leaves voice channel\n"
-                "> `,nowplaying` — Displays the interactive player card for the active track"
+                "> `,skip <Number>` (alias: `,s`) — Skips the given number of songs (default: 1)\n"
+                "> `,stop` (aliases: `,disconnect`, `,dc`, `,leave`) — Stops music and leaves voice channel\n"
+                "> `,nowplaying` (alias: `,np`) — Displays the active player card"
             )
             container.add_item(ui.TextDisplay(music_text))
 

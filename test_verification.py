@@ -114,6 +114,20 @@ def run_tests():
 
         print("✓ All 14 requested prefix commands verified!")
 
+        # Verify Aliases
+        expected_aliases = {
+            "p": "play",
+            "s": "skip",
+            "dc": "stop",
+            "disconnect": "stop",
+            "leave": "stop"
+        }
+        for alias, target_cmd in expected_aliases.items():
+            cmd = bot.get_command(alias)
+            assert cmd is not None, f"Alias ,{alias} not found!"
+            assert cmd.name == target_cmd, f"Alias ,{alias} resolves to {cmd.name}, expected {target_cmd}"
+            print(f"  ✓ Alias ,{alias} -> ,{target_cmd} verified!")
+
     asyncio.run(test_bot_setup())
 
     print("\nALL VERIFICATION TESTS COMPLETED SUCCESSFULLY!")

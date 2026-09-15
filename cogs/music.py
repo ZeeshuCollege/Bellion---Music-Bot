@@ -213,6 +213,11 @@ class MusicCog(commands.Cog, name="Music"):
         view = StatusLayoutView("### ⏹️ Playback Stopped", "Queue cleared and left the voice channel.")
         await interaction.response.send_message(view=view)
 
+    # ------------------ /disconnect ------------------
+    @app_commands.command(name="disconnect", description="Disconnect bot from voice channel and clear queue")
+    async def disconnect_slash(self, interaction: discord.Interaction):
+        await self.stop_slash(interaction)
+
     # ------------------ /queue ------------------
     @app_commands.command(name="queue", description="View active playlist queue")
     @app_commands.describe(page="Queue page number")
@@ -466,9 +471,9 @@ class MusicCog(commands.Cog, name="Music"):
                 view = StatusLayoutView("### ⏭️ Track Skipped", f"Skipped **{skipped.title}**.")
                 await ctx.send(view=view)
 
-    @commands.command(name="stop")
+    @commands.command(name="stop", aliases=["disconnect", "dc", "leave"])
     async def stop_prefix(self, ctx: commands.Context):
-        """Stop music, clear queue, and leave voice channel"""
+        """Stop music, clear queue, and leave voice channel (aliases: ,disconnect, ,dc, ,leave)"""
         player = self.players.get_player(ctx.guild)
         player.queue.clear()
         await player.stop()
