@@ -1,6 +1,6 @@
 from typing import List, Optional
 import discord
-from discord.ui import View, Button, Select, button, select
+from discord.ui import View, Button, Select, button
 from config import SUPPORT_SERVER_URL
 
 class NowPlayingView(View):
