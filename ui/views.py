@@ -217,7 +217,7 @@ class SearchLayoutView(ui.LayoutView):
     """
     Search results layout using Discord Components V2.
     """
-    def __init__(self, player, tracks: List[dict], user: discord.Member, query: str, timeout: float = 60.0):
+    def __init__(self, player, tracks: List[dict], user: Optional[discord.Member | discord.User] = None, query: str = "", timeout: float = 60.0):
         super().__init__(timeout=timeout)
         self.player = player
         self.tracks = tracks
@@ -255,7 +255,7 @@ class SearchLayoutView(ui.LayoutView):
 
     def make_callback(self, index: int):
         async def callback(interaction: discord.Interaction):
-            if interaction.user.id != self.user.id:
+            if self.user and interaction.user.id != self.user.id:
                 return await interaction.response.send_message("❌ This search is for someone else!", ephemeral=True)
             if not getattr(interaction.user, "voice", None) or not interaction.user.voice.channel:
                 return await interaction.response.send_message("❌ You must be in a voice channel!", ephemeral=True)

@@ -60,7 +60,7 @@ def run_tests():
     print("✓ QueueLayoutView constructed successfully with Components V2!")
 
     # Search V2 View
-    search_view = SearchLayoutView(player, tracks, None, query="test")
+    search_view = SearchLayoutView(player, tracks, user=None, query="test")
     assert search_view.has_components_v2(), "SearchLayoutView should have components_v2 = True"
     print("✓ SearchLayoutView constructed successfully with Components V2!")
 
