@@ -1,0 +1,12 @@
+# Virtual Environment
+bellion_music_bot/
+venv/
+.venv/
+
+# Environment variables & secrets
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
