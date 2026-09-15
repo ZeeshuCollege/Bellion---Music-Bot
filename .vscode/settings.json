@@ -1,5 +1,5 @@
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}\\bellion_music_bot\\Scripts\\python.exe",
+    "python.defaultInterpreterPath": "d:\\CodeSupa\\DISCORD\\Bellion - Music Bot\\bellion_music_bot\\Scripts\\python.exe",
     "python.analysis.extraPaths": [
         "${workspaceFolder}"
     ]
