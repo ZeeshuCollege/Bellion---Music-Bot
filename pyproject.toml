@@ -1,0 +1,10 @@
+[tool.pyrefly]
+python-interpreter-path = "bellion_music_bot/Scripts/python.exe"
+search-path = [
+    ".",
+    "bellion_music_bot/Lib/site-packages"
+]
+project-excludes = [
+    "bellion_music_bot",
+    ".venv"
+]
