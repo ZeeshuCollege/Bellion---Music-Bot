@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional
 import discord
 import yt_dlp
+from config import BASE_DIR
 from music.track import Track
 
 async def resolve_url_track(query_or_url: str, requester: Optional[discord.Member | discord.User] = None) -> Optional[Track]:
@@ -19,8 +20,17 @@ async def resolve_url_track(query_or_url: str, requester: Optional[discord.Membe
         'no_warnings': True,
         'default_search': 'auto',
         'extract_flat': False,
-        'noplaylist': True
+        'noplaylist': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'web']
+            }
+        }
     }
+    
+    cookies_file = BASE_DIR / "cookies.txt"
+    if cookies_file.exists():
+        ydl_opts['cookiefile'] = str(cookies_file)
     
     loop = asyncio.get_running_loop()
     def _extract():

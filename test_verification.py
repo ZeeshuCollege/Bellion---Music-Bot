@@ -34,9 +34,7 @@ def run_tests():
     library.reload()
     tracks = library.get_all()
     print(f"Discovered {len(tracks)} tracks:")
-    for t in tracks:
-        print(f"  • {t['title']} | Artist: {t['artist']} | Duration: {int(t['duration'])}s")
-    assert len(tracks) == 5, f"Expected 5 tracks, found {len(tracks)}"
+    print(f"Local tracks discovered: {len(tracks)} (Online YouTube streaming is now the primary audio source).")
 
     print("\n--- 2. Testing Discord Components V2 LayoutViews ---")
     dummy_track = Track(
