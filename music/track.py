@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union, Any
 import discord
 from ui.theme import format_time
 
@@ -9,7 +9,7 @@ class Track:
     artist: str
     duration: float  # seconds
     filepath: str
-    requester: Optional[discord.Member | discord.User] = None
+    requester: Optional[Union[discord.Member, discord.User, discord.ClientUser, Any]] = None
     thumbnail_url: Optional[str] = None
     source_type: str = "local"
 

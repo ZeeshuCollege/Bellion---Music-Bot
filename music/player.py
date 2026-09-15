@@ -113,14 +113,20 @@ class GuildPlayer:
 
         # Create FFmpeg audio source with volume (handles local and URLs)
         is_stream = next_track.source_type == "stream" or next_track.filepath.startswith("http")
-        ffmpeg_opts = {
-            'options': '-vn -loglevel error -nostdin'
-        }
-        if is_stream:
-            ffmpeg_opts['before_options'] = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
+        before_opts = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5' if is_stream else None
 
         try:
-            source = discord.FFmpegPCMAudio(next_track.filepath, **ffmpeg_opts)
+            if before_opts:
+                source = discord.FFmpegPCMAudio(
+                    next_track.filepath,
+                    options='-vn -loglevel error -nostdin',
+                    before_options=before_opts
+                )
+            else:
+                source = discord.FFmpegPCMAudio(
+                    next_track.filepath,
+                    options='-vn -loglevel error -nostdin'
+                )
             transformed = discord.PCMVolumeTransformer(source, volume=self.volume)
         except Exception as e:
             print(f"Error creating audio source: {e}")

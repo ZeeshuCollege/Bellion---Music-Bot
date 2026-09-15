@@ -1,5 +1,14 @@
 {
     "python.defaultInterpreterPath": "${workspaceFolder}\\bellion_music_bot\\Scripts\\python.exe",
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportGeneralTypeIssues": "none",
+        "reportOptionalMemberAccess": "none",
+        "reportArgumentType": "none",
+        "reportAttributeAccessIssue": "none",
+        "reportOptionalSubscript": "none",
+        "reportOptionalCall": "none"
+    },
     "python.analysis.extraPaths": [
         "${workspaceFolder}",
         "${workspaceFolder}\\bellion_music_bot\\Lib\\site-packages"
@@ -9,4 +18,3 @@
         "${workspaceFolder}\\bellion_music_bot\\Lib\\site-packages"
     ]
 }
-
