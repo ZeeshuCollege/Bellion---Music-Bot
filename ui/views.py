@@ -28,19 +28,21 @@ class NowPlayingLayoutView(ui.LayoutView):
         
         track = self.player.current
         if track:
-            # Thumbnail accessory
+            # Upper side: Media gallery image
             thumb_url = track.thumbnail_url or get_track_thumbnail(track.title, track.artist)
-            thumb = ui.Thumbnail(thumb_url)
+            if thumb_url:
+                media_item = discord.MediaGalleryItem(thumb_url)
+                container.add_item(ui.MediaGallery(media_item))
             
-            # Content with blockquote formatting matching screenshot
+            # Down side: Track info stacked vertically (long not wide)
             requester_name = track.get_requester_display()
             content = (
-                f"> **[{track.title}]({SUPPORT_SERVER_URL})** - `{track.artist}`\n"
-                f"> Duration: `{track.formatted_duration}`\n"
-                f"> Requested by {requester_name}"
+                f"> **[{track.title}]({SUPPORT_SERVER_URL})**\n"
+                f"> **Artist:** `{track.artist}`\n"
+                f"> **Duration:** `{track.formatted_duration}`\n"
+                f"> **Requested by:** {requester_name}"
             )
-            section = ui.Section(ui.TextDisplay(content), accessory=thumb)
-            container.add_item(section)
+            container.add_item(ui.TextDisplay(content))
         else:
             container.add_item(ui.TextDisplay("> *Nothing is currently playing.*"))
             
@@ -296,11 +298,10 @@ class StatusLayoutView(ui.LayoutView):
         container.add_item(ui.TextDisplay(title))
         
         if thumbnail_url:
-            section = ui.Section(ui.TextDisplay(description), accessory=ui.Thumbnail(thumbnail_url))
-            container.add_item(section)
-        else:
-            container.add_item(ui.TextDisplay(description))
-            
+            media_item = discord.MediaGalleryItem(thumbnail_url)
+            container.add_item(ui.MediaGallery(media_item))
+        
+        container.add_item(ui.TextDisplay(description))
         self.add_item(container)
 
 
