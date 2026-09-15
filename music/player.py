@@ -143,7 +143,7 @@ class GuildPlayer:
 
         view = NowPlayingLayoutView(self)
 
-        target_channel = channel or (self.now_playing_message.channel if self.now_playing_message else None)
+        target_channel = channel or getattr(self, "bound_channel", None) or (self.now_playing_message.channel if self.now_playing_message else None)
         if target_channel is None:
             # Fallback to first text channel bot can send messages to
             for ch in self.guild.text_channels:

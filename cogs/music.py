@@ -77,6 +77,8 @@ class MusicCog(commands.Cog, name="Music"):
         if not vc:
             return
 
+        player.bound_channel = interaction.channel
+
         # Check if URL or local song
         if query.startswith(("http://", "https://")):
             await interaction.response.defer()
@@ -101,8 +103,6 @@ class MusicCog(commands.Cog, name="Music"):
                     thumbnail_url=track.thumbnail_url or get_track_thumbnail(track.title, track.artist)
                 )
                 await interaction.followup.send(view=view)
-            else:
-                await interaction.followup.send(f"🎵 Now loading **{track.title}**...")
             return
 
         matches = library.search(query, limit=1)
@@ -142,11 +142,6 @@ class MusicCog(commands.Cog, name="Music"):
                 await interaction.followup.send(view=view)
             else:
                 await interaction.response.send_message(view=view)
-        else:
-            if interaction.response.is_done():
-                await interaction.followup.send(f"🎵 Now loading **{track.title}**...")
-            else:
-                await interaction.response.send_message(f"🎵 Now loading **{track.title}**...", ephemeral=True)
 
     @play_slash.autocomplete("query")
     async def play_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
@@ -358,6 +353,8 @@ class MusicCog(commands.Cog, name="Music"):
                 view = StatusLayoutView("### 🎵 Nothing is playing", "Use `,play <song name/link>` to start a song.")
                 return await ctx.send(view=view)
 
+        player.bound_channel = ctx.channel
+
         # Check if URL or local song
         if query.startswith(("http://", "https://")):
             loading_msg = await ctx.send(f"🔍 Fetching audio stream from link...")
@@ -383,10 +380,14 @@ class MusicCog(commands.Cog, name="Music"):
                 )
                 await loading_msg.edit(content=None, view=view)
             else:
-                await loading_msg.edit(content=f"🎵 Now playing **{track.title}**!")
+                try:
+                    await loading_msg.delete()
+                except Exception:
+                    pass
             return
 
         matches = library.search(query, limit=1)
+        loading_msg = None
         if matches:
             track_data = matches[0]
             track = Track(
@@ -402,10 +403,6 @@ class MusicCog(commands.Cog, name="Music"):
             if not track:
                 view = StatusLayoutView("### ⚠️ No results found", f"Could not find any song matching `{query}`.")
                 return await loading_msg.edit(content=None, view=view)
-            try:
-                await loading_msg.delete()
-            except Exception:
-                pass
 
         is_already_active = player.is_playing or player.current is not None
         pos = len(player.queue) + (1 if player.current else 0)
@@ -423,9 +420,16 @@ class MusicCog(commands.Cog, name="Music"):
                 ),
                 thumbnail_url=track.thumbnail_url or get_track_thumbnail(track.title, track.artist)
             )
-            await ctx.send(view=view)
+            if loading_msg:
+                await loading_msg.edit(content=None, view=view)
+            else:
+                await ctx.send(view=view)
         else:
-            await ctx.send(f"🎵 Now loading **{track.title}**...")
+            if loading_msg:
+                try:
+                    await loading_msg.delete()
+                except Exception:
+                    pass
 
     @commands.command(name="pause")
     async def pause_prefix(self, ctx: commands.Context):
