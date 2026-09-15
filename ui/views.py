@@ -368,35 +368,128 @@ class SettingsLayoutView(ui.LayoutView):
         await interaction.response.edit_message(view=self)
 
 
-class HelpSupportLayoutView(ui.LayoutView):
+class HelpDashboardLayoutView(ui.LayoutView):
     """
-    Help and support layout using Discord Components V2.
+    Interactive Help Dashboard using Discord Components V2.
+    Displays bot information and modular command listings with tab navigation.
     """
-    def __init__(self, timeout: Optional[float] = None):
+    def __init__(self, bot=None, current_module: str = "overview", timeout: Optional[float] = 180.0):
         super().__init__(timeout=timeout)
+        self.bot = bot
+        self.current_module = current_module
+        self.rebuild()
+
+    def rebuild(self):
+        self.clear_items()
         container = ui.Container()
-        container.add_item(ui.TextDisplay("### :scroll: Bellion Music - Command Guide"))
-        
-        content = (
-            "> **🎵 Music Commands:**\n"
-            "> `/play <query>` • `/search <query>` • `/pause` • `/resume` • `/skip` • `/stop`\n\n"
-            "> **📑 Queue & Playback:**\n"
-            "> `/nowplaying` • `/queue` • `/shuffle` • `/volume` • `/loop` • `/clear`\n\n"
-            "> **⚙️ Utility & Settings:**\n"
-            "> `/settings` • `/help` • `/ping`"
-        )
-        container.add_item(ui.TextDisplay(content))
+
+        latency_str = f"{round(self.bot.latency * 1000)} ms" if self.bot and hasattr(self.bot, "latency") else "Optimal"
+        guild_count = len(self.bot.guilds) if self.bot and hasattr(self.bot, "guilds") else 1
+
+        if self.current_module == "overview":
+            container.add_item(ui.TextDisplay("### :minidisc: Bellion Music - Help Dashboard"))
+            info_text = (
+                f"> **Bot Name:** `Bellion`\n"
+                f"> **Command Prefix:** `,` (comma)\n"
+                f"> **Gateway Latency:** `{latency_str}`\n"
+                f"> **Active Guilds:** `{guild_count}`\n"
+                f"> **Interface:** Discord Components V2 (No Embeds)\n\n"
+                f"**Select a command module below:**\n"
+                f"• :musical_note: **Music Module** — Playback, pause, resume, skip, stop\n"
+                f"• :bookmark_tabs: **Queue Module** — Queue management, loop, autoplay, shuffle\n"
+                f"• :gear: **Utility Module** — Latency image ping, invite, support, info"
+            )
+            container.add_item(ui.TextDisplay(info_text))
+
+        elif self.current_module == "music":
+            container.add_item(ui.TextDisplay("### :musical_note: Music Commands Module"))
+            music_text = (
+                "> `,play <song name / any link>` — Plays local audio tracks or web streams (YouTube, SoundCloud)\n"
+                "> `,pause` — Pauses current song playback\n"
+                "> `,resume` — Resumes paused track playback\n"
+                "> `,skip <Number>` — Skips the given number of songs (default: 1)\n"
+                "> `,stop` — Stops playback, clears queue, and leaves voice channel\n"
+                "> `,nowplaying` — Displays the interactive player card for the active track"
+            )
+            container.add_item(ui.TextDisplay(music_text))
+
+        elif self.current_module == "queue":
+            container.add_item(ui.TextDisplay("### :bookmark_tabs: Queue & Playback Module"))
+            queue_text = (
+                "> `,queue` — Displays upcoming tracks with interactive page navigation\n"
+                "> `,clear` — Clears all songs from the upcoming queue\n"
+                "> `,shuffle` — Shuffles the order of tracks in the queue\n"
+                "> `,loop` — Loops the current track (toggles repeat)\n"
+                "> `,autoplay` — Plays similar songs automatically when the queue finishes"
+            )
+            container.add_item(ui.TextDisplay(queue_text))
+
+        elif self.current_module == "utility":
+            container.add_item(ui.TextDisplay("### :gear: Utility & Info Module"))
+            util_text = (
+                "> `,help` — Opens this interactive help dashboard\n"
+                "> `,ping` — Renders and displays gateway latency in image format\n"
+                "> `,invite` — DMs the command runner the bot OAuth2 invite link\n"
+                "> `,support` — DMs the command runner the official support server invite\n"
+                "> `,settings` — Opens the audio volume, loop, and autoplay configuration card"
+            )
+            container.add_item(ui.TextDisplay(util_text))
+
         container.add_item(ui.TextDisplay(POWERED_BY_TEXT))
 
+        # Module navigation buttons
+        btn_overview = ui.Button(
+            label="Overview",
+            style=discord.ButtonStyle.primary if self.current_module == "overview" else discord.ButtonStyle.secondary
+        )
+        btn_music = ui.Button(
+            label="Music",
+            style=discord.ButtonStyle.primary if self.current_module == "music" else discord.ButtonStyle.secondary
+        )
+        btn_queue = ui.Button(
+            label="Queue",
+            style=discord.ButtonStyle.primary if self.current_module == "queue" else discord.ButtonStyle.secondary
+        )
+        btn_util = ui.Button(
+            label="Utility",
+            style=discord.ButtonStyle.primary if self.current_module == "utility" else discord.ButtonStyle.secondary
+        )
+
+        btn_overview.callback = self.make_module_callback("overview")
+        btn_music.callback = self.make_module_callback("music")
+        btn_queue.callback = self.make_module_callback("queue")
+        btn_util.callback = self.make_module_callback("utility")
+
+        row1 = ui.ActionRow(btn_overview, btn_music, btn_queue, btn_util)
+        container.add_item(row1)
+
+        # External Link buttons
+        invite_url = (
+            f"https://discord.com/oauth2/authorize?client_id={self.bot.user.id}&permissions=36700160&scope=bot%20applications.commands"
+            if self.bot and getattr(self.bot, "user", None)
+            else "https://discord.com"
+        )
+        btn_invite = ui.Button(label="Invite Bot", url=invite_url, style=discord.ButtonStyle.link)
         btn_support = ui.Button(label="Support Server", url=SUPPORT_SERVER_URL, style=discord.ButtonStyle.link)
-        row = ui.ActionRow(btn_support)
-        container.add_item(row)
+        row2 = ui.ActionRow(btn_invite, btn_support)
+        container.add_item(row2)
+
         self.add_item(container)
+
+    def make_module_callback(self, module_name: str):
+        async def callback(interaction: discord.Interaction):
+            self.current_module = module_name
+            self.rebuild()
+            await interaction.response.edit_message(view=self)
+        return callback
 
 
 # Backward-compatibility aliases
+HelpSupportLayoutView = HelpDashboardLayoutView
+HelpSupportView = HelpDashboardLayoutView
+HelpDashboardView = HelpDashboardLayoutView
 SettingsView = SettingsLayoutView
-HelpSupportView = HelpSupportLayoutView
 NowPlayingView = NowPlayingLayoutView
 QueueView = QueueLayoutView
 SearchView = SearchLayoutView
+

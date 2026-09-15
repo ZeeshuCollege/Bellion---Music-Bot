@@ -109,10 +109,14 @@ class GuildPlayer:
         self._accumulated_pause = 0.0
         self.is_paused = False
 
-        # Create FFmpeg audio source with volume
+        # Create FFmpeg audio source with volume (handles local and URLs)
+        is_stream = next_track.source_type == "stream" or next_track.filepath.startswith("http")
         ffmpeg_opts = {
             'options': '-vn -loglevel error'
         }
+        if is_stream:
+            ffmpeg_opts['before_options'] = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
+
         try:
             source = discord.FFmpegPCMAudio(next_track.filepath, **ffmpeg_opts)
             transformed = discord.PCMVolumeTransformer(source, volume=self.volume)

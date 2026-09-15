@@ -31,7 +31,7 @@ class BellionBot(commands.Bot):
         intents.message_content = message_content
 
         super().__init__(
-            command_prefix="!",
+            command_prefix=commands.when_mentioned_or(","),
             intents=intents,
             help_command=None
         )
@@ -60,7 +60,7 @@ class BellionBot(commands.Bot):
     async def on_ready(self):
         activity = discord.Activity(
             type=discord.ActivityType.listening,
-            name="🎶 /play | Bellion Music"
+            name="🎶 ,play | Bellion"
         )
         await self.change_presence(status=discord.Status.online, activity=activity)
 

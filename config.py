@@ -21,6 +21,7 @@ DEFAULT_LOOP = "off"   # off, track, queue
 DEFAULT_AUTOPLAY = False
 SUPPORT_SERVER_URL = "https://discord.gg/bellion"
 BOT_NAME = "Bellion"
+BOT_PREFIX = ","
 
 # Components V2 Branding
 POWERED_BY_TEXT = "Powered by [NexCloud Host | Fast & Reliable](https://nexcloud.host)"
