@@ -6,16 +6,8 @@ from discord.ext import commands
 from music.library import library
 from music.track import Track
 from music.player import PlayerManager
-from ui.embeds import (
-    create_now_playing_embed,
-    create_queue_embed,
-    create_search_results_embed,
-    create_nothing_playing_embed,
-    create_queue_empty_embed,
-    create_invalid_search_embed,
-    create_track_queued_embed
-)
-from ui.views import NowPlayingView, QueueView, SearchView
+from config import SUPPORT_SERVER_URL, get_track_thumbnail
+from ui.views import NowPlayingLayoutView, QueueLayoutView, SearchLayoutView, StatusLayoutView
 
 class MusicCog(commands.Cog, name="Music"):
     """Core Music Playback and Queue management commands."""
@@ -78,11 +70,13 @@ class MusicCog(commands.Cog, name="Music"):
                 await player._play_next()
                 return await interaction.response.send_message("▶️ Starting playback from queue.", ephemeral=True)
             else:
-                return await interaction.response.send_message(embed=create_nothing_playing_embed(), ephemeral=True)
+                view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+                return await interaction.response.send_message(view=view, ephemeral=True)
 
         matches = library.search(query, limit=1)
         if not matches:
-            return await interaction.response.send_message(embed=create_invalid_search_embed(query), ephemeral=True)
+            view = StatusLayoutView("### ⚠️ Invalid search", f"No results found for `{query}`. Try another keyword.")
+            return await interaction.response.send_message(view=view, ephemeral=True)
 
         vc = await self._ensure_voice(interaction)
         if not vc:
@@ -103,7 +97,17 @@ class MusicCog(commands.Cog, name="Music"):
         await player.add_track(track)
 
         if is_already_active:
-            await interaction.response.send_message(embed=create_track_queued_embed(track, position=position))
+            view = StatusLayoutView(
+                title="### :white_check_mark: Track Queued",
+                description=(
+                    f"> **[{track.title}]({SUPPORT_SERVER_URL})** - `{track.artist}`\n"
+                    f"> Duration: `{track.formatted_duration}`\n"
+                    f"> Position in queue: `#{position}`\n\n"
+                    f"-# Added to queue successfully!"
+                ),
+                thumbnail_url=get_track_thumbnail(track.title, track.artist)
+            )
+            await interaction.response.send_message(view=view)
         else:
             await interaction.response.send_message(f"🎵 Now loading **{track.title}**...", ephemeral=True)
 
@@ -128,12 +132,12 @@ class MusicCog(commands.Cog, name="Music"):
 
         matches = library.search(query, limit=5)
         if not matches:
-            return await interaction.response.send_message(embed=create_invalid_search_embed(query), ephemeral=True)
+            view = StatusLayoutView("### ⚠️ Invalid search", f"No results found for `{query}`. Try another keyword.")
+            return await interaction.response.send_message(view=view, ephemeral=True)
 
         player = self.players.get_player(interaction.guild)
-        embed = create_search_results_embed(query, matches)
-        view = SearchView(player, matches, interaction.user)
-        await interaction.response.send_message(embed=embed, view=view)
+        view = SearchLayoutView(player, matches, interaction.user, query)
+        await interaction.response.send_message(view=view)
 
     # ------------------ /pause ------------------
     @app_commands.command(name="pause", description="Pause current track")
@@ -142,7 +146,8 @@ class MusicCog(commands.Cog, name="Music"):
         if await player.pause():
             await interaction.response.send_message("⏸️ Playback paused.", ephemeral=True)
         else:
-            await interaction.response.send_message(embed=create_nothing_playing_embed(), ephemeral=True)
+            view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+            await interaction.response.send_message(view=view, ephemeral=True)
 
     # ------------------ /resume ------------------
     @app_commands.command(name="resume", description="Resume paused track")
@@ -151,7 +156,8 @@ class MusicCog(commands.Cog, name="Music"):
         if await player.resume():
             await interaction.response.send_message("▶️ Playback resumed.", ephemeral=True)
         else:
-            await interaction.response.send_message(embed=create_nothing_playing_embed(), ephemeral=True)
+            view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+            await interaction.response.send_message(view=view, ephemeral=True)
 
     # ------------------ /skip ------------------
     @app_commands.command(name="skip", description="Skip to next track in queue")
@@ -161,7 +167,8 @@ class MusicCog(commands.Cog, name="Music"):
         if skipped:
             await interaction.response.send_message(f"⏭️ Skipped **{skipped.title}**.", ephemeral=True)
         else:
-            await interaction.response.send_message(embed=create_nothing_playing_embed(), ephemeral=True)
+            view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+            await interaction.response.send_message(view=view, ephemeral=True)
 
     # ------------------ /previous ------------------
     @app_commands.command(name="previous", description="Replay the previous track")
@@ -177,18 +184,19 @@ class MusicCog(commands.Cog, name="Music"):
     async def stop_slash(self, interaction: discord.Interaction):
         player = self.players.get_player(interaction.guild)
         await player.stop()
-        await interaction.response.send_message("⏹️ Playback stopped and queue cleared.")
+        view = StatusLayoutView("### 🎵 Nothing is playing", "Playback stopped and queue cleared.\nUse `/play` to start a song.")
+        await interaction.response.send_message(view=view)
 
     # ------------------ /nowplaying ------------------
-    @app_commands.command(name="nowplaying", description="Show active player card with real-time controls")
+    @app_commands.command(name="nowplaying", description="Show active player card matching Discord V2 style")
     async def nowplaying_slash(self, interaction: discord.Interaction):
         player = self.players.get_player(interaction.guild)
         if not player.current:
-            return await interaction.response.send_message(embed=create_nothing_playing_embed(), ephemeral=True)
+            view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+            return await interaction.response.send_message(view=view, ephemeral=True)
 
-        embed = create_now_playing_embed(player.current, elapsed=player.get_elapsed())
-        view = NowPlayingView(player)
-        await interaction.response.send_message(embed=embed, view=view)
+        view = NowPlayingLayoutView(player)
+        await interaction.response.send_message(view=view)
 
     # ------------------ /queue ------------------
     @app_commands.command(name="queue", description="View active playlist queue with pagination")
@@ -196,11 +204,11 @@ class MusicCog(commands.Cog, name="Music"):
     async def queue_slash(self, interaction: discord.Interaction, page: Optional[int] = 1):
         player = self.players.get_player(interaction.guild)
         if not player.current and not player.queue:
-            return await interaction.response.send_message(embed=create_queue_empty_embed(), ephemeral=True)
+            view = StatusLayoutView("### 📑 Queue is empty", "Add some tracks using `/play`.")
+            return await interaction.response.send_message(view=view, ephemeral=True)
 
-        embed = create_queue_embed(player.queue, player.current, page=page or 1)
-        view = QueueView(player, current_page=page or 1)
-        await interaction.response.send_message(embed=embed, view=view)
+        view = QueueLayoutView(player, current_page=page or 1)
+        await interaction.response.send_message(view=view)
 
     # ------------------ /shuffle ------------------
     @app_commands.command(name="shuffle", description="Shuffle songs in the upcoming queue")
@@ -276,11 +284,13 @@ class MusicCog(commands.Cog, name="Music"):
                 await player._play_next()
                 return await ctx.send("▶️ Starting playback from queue.")
             else:
-                return await ctx.send(embed=create_nothing_playing_embed())
+                view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+                return await ctx.send(view=view)
 
         matches = library.search(query, limit=1)
         if not matches:
-            return await ctx.send(embed=create_invalid_search_embed(query))
+            view = StatusLayoutView("### ⚠️ Invalid search", f"No results found for `{query}`. Try another keyword.")
+            return await ctx.send(view=view)
 
         track_data = matches[0]
         track = Track(
@@ -297,7 +307,17 @@ class MusicCog(commands.Cog, name="Music"):
         await player.add_track(track)
 
         if is_already_active:
-            await ctx.send(embed=create_track_queued_embed(track, position=pos))
+            view = StatusLayoutView(
+                title="### :white_check_mark: Track Queued",
+                description=(
+                    f"> **[{track.title}]({SUPPORT_SERVER_URL})** - `{track.artist}`\n"
+                    f"> Duration: `{track.formatted_duration}`\n"
+                    f"> Position in queue: `#{pos}`\n\n"
+                    f"-# Added to queue successfully!"
+                ),
+                thumbnail_url=get_track_thumbnail(track.title, track.artist)
+            )
+            await ctx.send(view=view)
         else:
             await ctx.send(f"🎵 Now loading **{track.title}**...")
 
@@ -308,7 +328,8 @@ class MusicCog(commands.Cog, name="Music"):
         if skipped:
             await ctx.send(f"⏭️ Skipped **{skipped.title}**.")
         else:
-            await ctx.send(embed=create_nothing_playing_embed())
+            view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+            await ctx.send(view=view)
 
     @commands.command(name="pause")
     async def pause_prefix(self, ctx: commands.Context):
@@ -316,7 +337,8 @@ class MusicCog(commands.Cog, name="Music"):
         if await player.pause():
             await ctx.send("⏸️ Paused playback.")
         else:
-            await ctx.send(embed=create_nothing_playing_embed())
+            view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+            await ctx.send(view=view)
 
     @commands.command(name="resume")
     async def resume_prefix(self, ctx: commands.Context):
@@ -324,31 +346,33 @@ class MusicCog(commands.Cog, name="Music"):
         if await player.resume():
             await ctx.send("▶️ Resumed playback.")
         else:
-            await ctx.send(embed=create_nothing_playing_embed())
+            view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+            await ctx.send(view=view)
 
     @commands.command(name="stop")
     async def stop_prefix(self, ctx: commands.Context):
         player = self.players.get_player(ctx.guild)
         await player.stop()
-        await ctx.send("⏹️ Playback stopped and queue cleared.")
+        view = StatusLayoutView("### 🎵 Nothing is playing", "Playback stopped and queue cleared.\nUse `/play` to start a song.")
+        await ctx.send(view=view)
 
     @commands.command(name="queue", aliases=["q"])
     async def queue_prefix(self, ctx: commands.Context, page: int = 1):
         player = self.players.get_player(ctx.guild)
         if not player.current and not player.queue:
-            return await ctx.send(embed=create_queue_empty_embed())
-        embed = create_queue_embed(player.queue, player.current, page=page)
-        view = QueueView(player, current_page=page)
-        await ctx.send(embed=embed, view=view)
+            view = StatusLayoutView("### 📑 Queue is empty", "Add some tracks using `/play`.")
+            return await ctx.send(view=view)
+        view = QueueLayoutView(player, current_page=page)
+        await ctx.send(view=view)
 
     @commands.command(name="nowplaying", aliases=["np"])
     async def nowplaying_prefix(self, ctx: commands.Context):
         player = self.players.get_player(ctx.guild)
         if not player.current:
-            return await ctx.send(embed=create_nothing_playing_embed())
-        embed = create_now_playing_embed(player.current, elapsed=player.get_elapsed())
-        view = NowPlayingView(player)
-        await ctx.send(embed=embed, view=view)
+            view = StatusLayoutView("### 🎵 Nothing is playing", "Use `/play` to start a song.")
+            return await ctx.send(view=view)
+        view = NowPlayingLayoutView(player)
+        await ctx.send(view=view)
 
 
 async def setup(bot: commands.Bot):

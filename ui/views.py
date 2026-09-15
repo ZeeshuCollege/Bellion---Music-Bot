@@ -1,132 +1,82 @@
 from typing import List, Optional
 import discord
-from discord.ui import View, Button, Select, button
-from config import SUPPORT_SERVER_URL
+from discord import ui
 
-class NowPlayingView(View):
+from config import SUPPORT_SERVER_URL, POWERED_BY_TEXT, get_track_thumbnail
+from music.track import Track
+
+class NowPlayingLayoutView(ui.LayoutView):
     """
-    Persistent interactive controller for the Now Playing card.
-    Contains: Prev, Play/Pause, Stop, Next, Loop, Shuffle, Volume-, Volume+
+    Discord Components V2 LayoutView matching the reference screenshot.
+    Uses Container (type 17), Section (type 9) with Thumbnail accessory (type 11),
+    and Action Rows with styled buttons.
     """
     def __init__(self, player, timeout: Optional[float] = None):
         super().__init__(timeout=timeout)
         self.player = player
-        self._update_play_pause_button()
+        self.rebuild()
 
-    def _update_play_pause_button(self):
-        # Update emoji/label based on paused state
-        for item in self.children:
-            if isinstance(item, Button) and item.custom_id == "np_play_pause":
-                item.emoji = "▶️" if self.player.is_paused else "⏸️"
-                item.style = discord.ButtonStyle.success if self.player.is_paused else discord.ButtonStyle.primary
-            elif isinstance(item, Button) and item.custom_id == "np_loop":
-                if self.player.loop_mode == "track":
-                    item.label = "Loop: 1"
-                    item.style = discord.ButtonStyle.primary
-                elif self.player.loop_mode == "queue":
-                    item.label = "Loop: All"
-                    item.style = discord.ButtonStyle.primary
-                else:
-                    item.label = "Loop: Off"
-                    item.style = discord.ButtonStyle.secondary
-
-    @button(emoji="⏮️", style=discord.ButtonStyle.secondary, row=0, custom_id="np_prev")
-    async def prev_button(self, interaction: discord.Interaction, btn: Button):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+    def rebuild(self):
+        """Reconstruct the components tree based on current player state."""
+        self.clear_items()
         
-        success = await self.player.previous()
-        if success:
-            await interaction.response.send_message("⏮️ Replaying previous track.", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ No previous track in history.", ephemeral=True)
-
-    @button(emoji="⏸️", style=discord.ButtonStyle.primary, row=0, custom_id="np_play_pause")
-    async def play_pause_button(self, interaction: discord.Interaction, btn: Button):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
-
-        if self.player.is_paused:
-            await self.player.resume()
-        else:
-            await self.player.pause()
+        container = ui.Container()
+        
+        # 1. Header: 💽 Now Playing
+        header = ui.TextDisplay("### :minidisc: Now Playing")
+        container.add_item(header)
+        
+        track = self.player.current
+        if track:
+            # Thumbnail accessory
+            thumb_url = track.thumbnail_url or get_track_thumbnail(track.title, track.artist)
+            thumb = ui.Thumbnail(thumb_url)
             
-        self._update_play_pause_button()
-        if self.player.current:
-            from ui.embeds import create_now_playing_embed
-            bot_avatar = interaction.client.user.display_avatar.url if interaction.client.user else None
-            embed = create_now_playing_embed(self.player.current, elapsed=self.player.get_elapsed(), bot_avatar_url=bot_avatar)
-            await interaction.response.edit_message(embed=embed, view=self)
+            # Content with blockquote formatting matching screenshot
+            requester_name = track.get_requester_display()
+            content = (
+                f"> **[{track.title}]({SUPPORT_SERVER_URL})** - `{track.artist}`\n"
+                f"> Duration: `{track.formatted_duration}`\n"
+                f"> Requested by {requester_name}"
+            )
+            section = ui.Section(ui.TextDisplay(content), accessory=thumb)
+            container.add_item(section)
         else:
-            await interaction.response.defer()
-
-    @button(emoji="⏹️", style=discord.ButtonStyle.danger, row=0, custom_id="np_stop")
-    async def stop_button(self, interaction: discord.Interaction, btn: Button):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
-
-        await self.player.stop()
-        from ui.embeds import create_nothing_playing_embed
-        await interaction.response.edit_message(embed=create_nothing_playing_embed(), view=None)
-
-    @button(emoji="⏭️", style=discord.ButtonStyle.secondary, row=0, custom_id="np_skip")
-    async def skip_button(self, interaction: discord.Interaction, btn: Button):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
-
-        skipped = await self.player.skip()
-        if skipped:
-            await interaction.response.send_message(f"⏭️ Skipped **{skipped.title}**", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Nothing is playing.", ephemeral=True)
-
-    @button(label="Loop: Off", emoji="🔁", style=discord.ButtonStyle.secondary, row=0, custom_id="np_loop")
-    async def loop_button(self, interaction: discord.Interaction, btn: Button):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
-
-        self.player.cycle_loop()
-        self._update_play_pause_button()
-        if self.player.current:
-            from ui.embeds import create_now_playing_embed
-            bot_avatar = interaction.client.user.display_avatar.url if interaction.client.user else None
-            embed = create_now_playing_embed(self.player.current, elapsed=self.player.get_elapsed(), bot_avatar_url=bot_avatar)
-            await interaction.response.edit_message(embed=embed, view=self)
-        else:
-            await interaction.response.defer()
-
-    @button(emoji="🔀", label="Shuffle", style=discord.ButtonStyle.secondary, row=1, custom_id="np_shuffle")
-    async def shuffle_button(self, interaction: discord.Interaction, btn: Button):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
-
-        self.player.shuffle_queue()
-        await interaction.response.send_message("🔀 Queue has been shuffled!", ephemeral=True)
-
-    @button(emoji="🔉", label="-10%", style=discord.ButtonStyle.secondary, row=1, custom_id="np_voldown")
-    async def voldown_button(self, interaction: discord.Interaction, btn: Button):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
-
-        new_vol = max(0.0, self.player.volume - 0.10)
-        self.player.set_volume(new_vol)
-        await interaction.response.send_message(f"🔉 Volume set to **{int(new_vol * 100)}%**", ephemeral=True)
-
-    @button(emoji="🔊", label="+10%", style=discord.ButtonStyle.secondary, row=1, custom_id="np_volup")
-    async def volup_button(self, interaction: discord.Interaction, btn: Button):
-        if not self._check_voice(interaction):
-            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
-
-        new_vol = min(1.0, self.player.volume + 0.10)
-        self.player.set_volume(new_vol)
-        await interaction.response.send_message(f"🔊 Volume set to **{int(new_vol * 100)}%**", ephemeral=True)
-
-    @button(emoji="📑", label="Queue", style=discord.ButtonStyle.secondary, row=1, custom_id="np_queue")
-    async def queue_button(self, interaction: discord.Interaction, btn: Button):
-        from ui.embeds import create_queue_embed
-        embed = create_queue_embed(self.player.queue, self.player.current, page=1)
-        view = QueueView(self.player, current_page=1)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            container.add_item(ui.TextDisplay("> *Nothing is currently playing.*"))
+            
+        # 2. Powered by footer
+        footer = ui.TextDisplay(POWERED_BY_TEXT)
+        container.add_item(footer)
+        
+        # 3. Action Row 1: Pause/Resume, Skip, Stop (Danger), Loop
+        pause_label = "Resume" if self.player.is_paused else "Pause"
+        btn_pause = ui.Button(label=pause_label, style=discord.ButtonStyle.secondary, custom_id="v2_pause")
+        btn_skip = ui.Button(label="Skip", style=discord.ButtonStyle.secondary, custom_id="v2_skip")
+        btn_stop = ui.Button(label="Stop", style=discord.ButtonStyle.danger, custom_id="v2_stop")
+        
+        loop_labels = {
+            "off": "Loop",
+            "track": "Loop: 1",
+            "queue": "Loop: All"
+        }
+        loop_label = loop_labels.get(self.player.loop_mode, "Loop")
+        btn_loop = ui.Button(label=loop_label, style=discord.ButtonStyle.secondary, custom_id="v2_loop")
+        
+        btn_pause.callback = self.on_pause
+        btn_skip.callback = self.on_skip
+        btn_stop.callback = self.on_stop
+        btn_loop.callback = self.on_loop
+        
+        row1 = ui.ActionRow(btn_pause, btn_skip, btn_stop, btn_loop)
+        container.add_item(row1)
+        
+        # 4. Action Row 2: Shuffle
+        btn_shuffle = ui.Button(label="Shuffle", style=discord.ButtonStyle.secondary, custom_id="v2_shuffle")
+        btn_shuffle.callback = self.on_shuffle
+        row2 = ui.ActionRow(btn_shuffle)
+        container.add_item(row2)
+        
+        self.add_item(container)
 
     def _check_voice(self, interaction: discord.Interaction) -> bool:
         if not interaction.user or not isinstance(interaction.user, discord.Member):
@@ -138,199 +88,217 @@ class NowPlayingView(View):
             return False
         return True
 
+    async def on_pause(self, interaction: discord.Interaction):
+        if not self._check_voice(interaction):
+            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+        
+        if self.player.is_paused:
+            await self.player.resume()
+        else:
+            await self.player.pause()
+            
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
 
-class QueueView(View):
+    async def on_skip(self, interaction: discord.Interaction):
+        if not self._check_voice(interaction):
+            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+            
+        skipped = await self.player.skip()
+        if skipped:
+            await interaction.response.send_message(f"⏭️ Skipped **{skipped.title}**", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Nothing is playing.", ephemeral=True)
+
+    async def on_stop(self, interaction: discord.Interaction):
+        if not self._check_voice(interaction):
+            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+            
+        await self.player.stop()
+        view = StatusLayoutView(
+            title="### 🎵 Nothing is playing",
+            description="Playback stopped and queue cleared.\nUse `/play` to start a song."
+        )
+        await interaction.response.edit_message(view=view)
+
+    async def on_loop(self, interaction: discord.Interaction):
+        if not self._check_voice(interaction):
+            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+            
+        self.player.cycle_loop()
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
+
+    async def on_shuffle(self, interaction: discord.Interaction):
+        if not self._check_voice(interaction):
+            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+            
+        self.player.shuffle_queue()
+        await interaction.response.send_message("🔀 Queue has been shuffled!", ephemeral=True)
+
+
+class QueueLayoutView(ui.LayoutView):
     """
-    Paginated interactive view for inspecting and navigating the queue.
+    Paginated queue browser using Discord Components V2.
     """
     def __init__(self, player, current_page: int = 1, timeout: float = 120.0):
         super().__init__(timeout=timeout)
         self.player = player
         self.current_page = current_page
-        self._update_buttons()
+        self.rebuild()
 
-    def _update_buttons(self):
-        total_pages = max(1, (len(self.player.queue) + 4) // 5)
-        for item in self.children:
-            if isinstance(item, Button):
-                if item.custom_id == "q_prev":
-                    item.disabled = (self.current_page <= 1)
-                elif item.custom_id == "q_next":
-                    item.disabled = (self.current_page >= total_pages)
-                elif item.custom_id == "q_page":
-                    item.label = f"Page {self.current_page}/{total_pages}"
+    def rebuild(self):
+        self.clear_items()
+        container = ui.Container()
+        
+        # Header
+        container.add_item(ui.TextDisplay("### :hash: Current Queue"))
+        
+        all_tracks = []
+        if self.player.current:
+            all_tracks.append(self.player.current)
+        all_tracks.extend(self.player.queue)
+        
+        if not all_tracks:
+            container.add_item(ui.TextDisplay("> *The queue is empty. Add songs using `/play`!*"))
+        else:
+            lines = []
+            if self.player.current and self.current_page == 1:
+                lines.append(f"> **Now Playing:**")
+                lines.append(f"> ▶ **[{self.player.current.title}]({SUPPORT_SERVER_URL})** - `{self.player.current.artist}` (`{self.player.current.formatted_duration}`)\n")
+                if self.player.queue:
+                    lines.append(f"> **Up Next:**")
+            
+            start_idx = (self.current_page - 1) * 5
+            end_idx = start_idx + 5
+            page_tracks = self.player.queue[start_idx:end_idx]
+            
+            for i, track in enumerate(page_tracks, start=start_idx + 1):
+                lines.append(f"> `{i}.` **[{track.title}]({SUPPORT_SERVER_URL})** - `{track.artist}` (`{track.formatted_duration}`)")
+                
+            total_pages = max(1, (len(self.player.queue) + 4) // 5) if self.player.queue else 1
+            lines.append(f"\n-# Page {self.current_page}/{total_pages} • Total: {len(self.player.queue)} tracks in queue")
+            container.add_item(ui.TextDisplay("\n".join(lines)))
+            
+        # Navigation buttons
+        btn_prev = ui.Button(label="◀ Previous", style=discord.ButtonStyle.secondary, disabled=(self.current_page <= 1))
+        total_pages = max(1, (len(self.player.queue) + 4) // 5) if self.player.queue else 1
+        btn_next = ui.Button(label="Next ▶", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages))
+        btn_clear = ui.Button(label="Clear Queue", style=discord.ButtonStyle.danger)
+        
+        btn_prev.callback = self.on_prev
+        btn_next.callback = self.on_next
+        btn_clear.callback = self.on_clear
+        
+        row = ui.ActionRow(btn_prev, btn_next, btn_clear)
+        container.add_item(row)
+        
+        self.add_item(container)
 
-    @button(label="◀ Previous", style=discord.ButtonStyle.secondary, custom_id="q_prev")
-    async def prev_page(self, interaction: discord.Interaction, btn: Button):
-        from ui.embeds import create_queue_embed
+    async def on_prev(self, interaction: discord.Interaction):
         self.current_page = max(1, self.current_page - 1)
-        self._update_buttons()
-        embed = create_queue_embed(self.player.queue, self.player.current, page=self.current_page)
-        await interaction.response.edit_message(embed=embed, view=self)
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
 
-    @button(label="Page 1/1", style=discord.ButtonStyle.secondary, disabled=True, custom_id="q_page")
-    async def page_indicator(self, interaction: discord.Interaction, btn: Button):
-        pass
-
-    @button(label="Next ▶", style=discord.ButtonStyle.secondary, custom_id="q_next")
-    async def next_page(self, interaction: discord.Interaction, btn: Button):
-        from ui.embeds import create_queue_embed
-        total_pages = max(1, (len(self.player.queue) + 4) // 5)
+    async def on_next(self, interaction: discord.Interaction):
+        total_pages = max(1, (len(self.player.queue) + 4) // 5) if self.player.queue else 1
         self.current_page = min(total_pages, self.current_page + 1)
-        self._update_buttons()
-        embed = create_queue_embed(self.player.queue, self.player.current, page=self.current_page)
-        await interaction.response.edit_message(embed=embed, view=self)
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
 
-    @button(label="Clear Queue", emoji="🗑️", style=discord.ButtonStyle.danger, custom_id="q_clear")
-    async def clear_queue(self, interaction: discord.Interaction, btn: Button):
+    async def on_clear(self, interaction: discord.Interaction):
         self.player.queue.clear()
-        from ui.embeds import create_queue_embed
         self.current_page = 1
-        self._update_buttons()
-        embed = create_queue_embed(self.player.queue, self.player.current, page=1)
-        await interaction.response.edit_message(embed=embed, view=self)
+        self.rebuild()
+        await interaction.response.edit_message(view=self)
 
 
-class SearchView(View):
+class SearchLayoutView(ui.LayoutView):
     """
-    Interactive view for /search results offering numbered 1-5 buttons and a select menu.
+    Search results layout using Discord Components V2.
     """
-    def __init__(self, player, tracks: List[dict], user: discord.Member, timeout: float = 60.0):
+    def __init__(self, player, tracks: List[dict], user: discord.Member, query: str, timeout: float = 60.0):
         super().__init__(timeout=timeout)
         self.player = player
         self.tracks = tracks
         self.user = user
+        self.query = query
+        self.rebuild()
 
-        # Add select dropdown for direct selection
-        options = []
-        for idx, t in enumerate(tracks[:5], start=1):
-            options.append(
-                discord.SelectOption(
-                    label=f"{idx}. {t['title'][:95]}",
-                    description=f"{t['artist']} ({int(t.get('duration', 0))}s)",
-                    value=str(idx - 1)
-                )
-            )
+    def rebuild(self):
+        self.clear_items()
+        container = ui.Container()
+        
+        container.add_item(ui.TextDisplay(f"### :mag: Search Results for `{self.query}`"))
+        
+        lines = []
+        for idx, t in enumerate(self.tracks[:5], start=1):
+            dur = int(t.get("duration", 0))
+            mins = dur // 60
+            secs = dur % 60
+            lines.append(f"> `{idx}.` **[{t['title']}]({SUPPORT_SERVER_URL})** - `{t['artist']}` (`{mins}:{secs:02d}`)")
+            
+        lines.append("\n-# Click a number below to play that track immediately:")
+        container.add_item(ui.TextDisplay("\n".join(lines)))
+        
+        buttons = []
+        for idx in range(min(5, len(self.tracks))):
+            btn = ui.Button(label=str(idx + 1), style=discord.ButtonStyle.primary, custom_id=f"v2_search_{idx}")
+            btn.callback = self.make_callback(idx)
+            buttons.append(btn)
+            
+        if buttons:
+            row = ui.ActionRow(*buttons)
+            container.add_item(row)
+            
+        self.add_item(container)
 
-        if options:
-            select_menu = Select(
-                placeholder="Choose a track to play...",
-                options=options,
-                custom_id="search_select",
-                row=0
-            )
-            select_menu.callback = self.select_callback
-            self.add_item(select_menu)
-
-        # Add quick-access 1..N buttons
-        for idx in range(min(5, len(tracks))):
-            btn = Button(
-                label=str(idx + 1),
-                style=discord.ButtonStyle.primary,
-                custom_id=f"search_btn_{idx}",
-                row=1
-            )
-            btn.callback = self.make_button_callback(idx)
-            self.add_item(btn)
-
-    async def _queue_chosen_track(self, index: int, interaction: discord.Interaction):
-        from music.track import Track
-        from ui.embeds import create_track_queued_embed
-
-        track_data = self.tracks[index]
-        track = Track(
-            title=track_data["title"],
-            artist=track_data["artist"],
-            duration=track_data["duration"],
-            filepath=track_data["filepath"],
-            requester=interaction.user
-        )
-
-        position = len(self.player.queue) + (1 if self.player.current else 0)
-        await self.player.add_track(track)
-
-        embed = create_track_queued_embed(track, position=position)
-        # Disable all view elements after selection
-        for item in self.children:
-            item.disabled = True
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    def make_button_callback(self, index: int):
+    def make_callback(self, index: int):
         async def callback(interaction: discord.Interaction):
             if interaction.user.id != self.user.id:
                 return await interaction.response.send_message("❌ This search is for someone else!", ephemeral=True)
             if not getattr(interaction.user, "voice", None) or not interaction.user.voice.channel:
-                return await interaction.response.send_message("❌ You must be in a voice channel to pick a track!", ephemeral=True)
-            await self._queue_chosen_track(index, interaction)
+                return await interaction.response.send_message("❌ You must be in a voice channel!", ephemeral=True)
+                
+            track_data = self.tracks[index]
+            track = Track(
+                title=track_data["title"],
+                artist=track_data["artist"],
+                duration=track_data["duration"],
+                filepath=track_data["filepath"],
+                requester=interaction.user
+            )
+            
+            position = len(self.player.queue) + (1 if self.player.current else 0)
+            await self.player.add_track(track)
+            
+            view = StatusLayoutView(
+                title="### :white_check_mark: Track Queued",
+                description=(
+                    f"> **[{track.title}]({SUPPORT_SERVER_URL})** - `{track.artist}`\n"
+                    f"> Duration: `{track.formatted_duration}`\n"
+                    f"> Position in queue: `#{position}`\n\n"
+                    f"-# Added to queue successfully!"
+                ),
+                thumbnail_url=get_track_thumbnail(track.title, track.artist)
+            )
+            await interaction.response.edit_message(view=view)
         return callback
 
-    async def select_callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.user.id:
-            return await interaction.response.send_message("❌ This search is for someone else!", ephemeral=True)
-        if not getattr(interaction.user, "voice", None) or not interaction.user.voice.channel:
-            return await interaction.response.send_message("❌ You must be in a voice channel to pick a track!", ephemeral=True)
-        chosen_idx = int(interaction.data["values"][0])
-        await self._queue_chosen_track(chosen_idx, interaction)
 
-
-class SettingsView(View):
+class StatusLayoutView(ui.LayoutView):
     """
-    Interactive View for adjusting Volume, Loop Mode, and Autoplay directly.
+    Standard Components V2 status card for notifications, alerts, and confirmations.
     """
-    def __init__(self, player, timeout: float = 120.0):
+    def __init__(self, title: str, description: str, thumbnail_url: Optional[str] = None, timeout: Optional[float] = None):
         super().__init__(timeout=timeout)
-        self.player = player
-
-    @button(label="Vol -10%", emoji="🔉", style=discord.ButtonStyle.secondary, row=0)
-    async def vol_down(self, interaction: discord.Interaction, btn: Button):
-        self.player.set_volume(max(0.0, self.player.volume - 0.10))
-        from ui.embeds import create_settings_embed
-        embed = create_settings_embed(self.player.volume, self.player.loop_mode, self.player.autoplay)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @button(label="Vol +10%", emoji="🔊", style=discord.ButtonStyle.secondary, row=0)
-    async def vol_up(self, interaction: discord.Interaction, btn: Button):
-        self.player.set_volume(min(1.0, self.player.volume + 0.10))
-        from ui.embeds import create_settings_embed
-        embed = create_settings_embed(self.player.volume, self.player.loop_mode, self.player.autoplay)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @button(label="Loop Mode", emoji="🔁", style=discord.ButtonStyle.primary, row=1)
-    async def loop_toggle(self, interaction: discord.Interaction, btn: Button):
-        self.player.cycle_loop()
-        from ui.embeds import create_settings_embed
-        embed = create_settings_embed(self.player.volume, self.player.loop_mode, self.player.autoplay)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @button(label="Toggle Autoplay", emoji="✨", style=discord.ButtonStyle.primary, row=1)
-    async def autoplay_toggle(self, interaction: discord.Interaction, btn: Button):
-        self.player.autoplay = not self.player.autoplay
-        from ui.embeds import create_settings_embed
-        embed = create_settings_embed(self.player.volume, self.player.loop_mode, self.player.autoplay)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-
-class HelpSupportView(View):
-    """
-    Interactive Help & Support View featuring direct Discord Invite Button.
-    """
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(
-            Button(
-                label="Join Support Server",
-                url=SUPPORT_SERVER_URL,
-                style=discord.ButtonStyle.link,
-                emoji="🌐"
-            )
-        )
-
-    @button(label="Command List", emoji="📜", style=discord.ButtonStyle.primary)
-    async def show_commands(self, interaction: discord.Interaction, btn: Button):
-        from ui.embeds import create_help_embed
-        await interaction.response.edit_message(embed=create_help_embed(), view=self)
-
-    @button(label="Support Info", emoji="❓", style=discord.ButtonStyle.secondary)
-    async def show_support(self, interaction: discord.Interaction, btn: Button):
-        from ui.embeds import create_support_embed
-        await interaction.response.edit_message(embed=create_support_embed(), view=self)
+        container = ui.Container()
+        container.add_item(ui.TextDisplay(title))
+        
+        if thumbnail_url:
+            section = ui.Section(ui.TextDisplay(description), accessory=ui.Thumbnail(thumbnail_url))
+            container.add_item(section)
+        else:
+            container.add_item(ui.TextDisplay(description))
+            
+        self.add_item(container)

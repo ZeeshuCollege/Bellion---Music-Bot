@@ -7,12 +7,7 @@ from discord.ext import commands
 
 from config import DEFAULT_VOLUME, DEFAULT_LOOP, DEFAULT_AUTOPLAY
 from music.track import Track
-from ui.embeds import (
-    create_now_playing_embed,
-    create_nothing_playing_embed,
-    create_queue_empty_embed
-)
-from ui.views import NowPlayingView
+from ui.views import NowPlayingLayoutView, StatusLayoutView
 
 class GuildPlayer:
     """
@@ -136,13 +131,11 @@ class GuildPlayer:
         await self._send_now_playing_card()
 
     async def _send_now_playing_card(self, channel: Optional[discord.TextChannel] = None):
-        """Sends or updates the Now Playing card in the designated channel."""
+        """Sends or updates the Now Playing card in the designated channel using Components V2."""
         if not self.current:
             return
 
-        bot_avatar = self.bot.user.display_avatar.url if self.bot.user else None
-        embed = create_now_playing_embed(self.current, elapsed=0.0, bot_avatar_url=bot_avatar)
-        view = NowPlayingView(self)
+        view = NowPlayingLayoutView(self)
 
         target_channel = channel or (self.now_playing_message.channel if self.now_playing_message else None)
         if target_channel is None:
@@ -154,20 +147,18 @@ class GuildPlayer:
 
         if target_channel:
             try:
-                msg = await target_channel.send(embed=embed, view=view)
+                msg = await target_channel.send(view=view)
                 self.now_playing_message = msg
             except Exception as e:
-                print(f"Failed to send Now Playing embed: {e}")
+                print(f"Failed to send Now Playing view: {e}")
 
     async def update_now_playing_card(self):
-        """Updates the active Now Playing card with live progress and button states."""
+        """Updates the active Now Playing card with live button states."""
         if not self.now_playing_message or not self.current:
             return
         try:
-            bot_avatar = self.bot.user.display_avatar.url if self.bot.user else None
-            embed = create_now_playing_embed(self.current, elapsed=self.get_elapsed(), bot_avatar_url=bot_avatar)
-            view = NowPlayingView(self)
-            await self.now_playing_message.edit(embed=embed, view=view)
+            view = NowPlayingLayoutView(self)
+            await self.now_playing_message.edit(view=view)
         except Exception:
             pass
 
