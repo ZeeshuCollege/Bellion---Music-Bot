@@ -9,6 +9,15 @@ from config import DEFAULT_VOLUME, DEFAULT_LOOP, DEFAULT_AUTOPLAY
 from music.track import Track
 from ui.views import NowPlayingLayoutView, StatusLayoutView
 
+# Audio Filter Presets (FFmpeg audio filter strings)
+AUDIO_FILTERS: Dict[str, str] = {
+    "8d": "apulsator=hz=0.125",
+    "bassboost": "equalizer=f=60:width_type=h:width=50:g=10,equalizer=f=125:width_type=h:width=50:g=6",
+    "nightcore": "asetrate=48000*1.25,aresample=48000",
+    "vaporwave": "asetrate=48000*0.8,aresample=48000",
+    "pop": "equalizer=f=1000:width_type=h:width=200:g=5,equalizer=f=3000:width_type=h:width=500:g=4",
+}
+
 class GuildPlayer:
     """
     Manages audio playback, queue, loop mode, volume, and voice connection for a single guild.
@@ -25,6 +34,9 @@ class GuildPlayer:
         self.volume: float = DEFAULT_VOLUME
         self.loop_mode: str = DEFAULT_LOOP  # "off", "track", "queue"
         self.autoplay: bool = DEFAULT_AUTOPLAY
+        self.filter: Optional[str] = None
+        self._is_reapplying_filter: bool = False
+        self._play_id: int = 0
         
         self._start_time: float = 0.0
         self._pause_time: float = 0.0
@@ -32,6 +44,7 @@ class GuildPlayer:
         self.is_paused: bool = False
         
         self.now_playing_message: Optional[discord.Message] = None
+        self.bound_channel: Optional[discord.abc.Messageable] = None
         self._idle_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
 
@@ -47,17 +60,20 @@ class GuildPlayer:
             return self._pause_time - self._start_time - self._accumulated_pause
         return time.time() - self._start_time - self._accumulated_pause
 
-    async def add_track(self, track: Track, play_now: bool = False):
-        """Adds a track to the queue, or plays immediately if idle."""
+    async def add_track(self, track: Track, play_now: bool = False) -> bool:
+        """Adds a track to the queue, or plays immediately if idle. Returns True if started playing immediately, False if queued."""
         async with self._lock:
             self._cancel_idle_timer()
+            was_idle = (not self.is_playing and not self.is_paused and self.current is None)
             if play_now:
                 self.queue.insert(0, track)
             else:
                 self.queue.append(track)
 
-            if not self.is_playing and not self.is_paused and self.current is None:
+            if was_idle:
                 await self._play_next()
+                return True
+            return False
 
     async def _play_next(self):
         """Internal method to trigger the next song."""
@@ -115,17 +131,21 @@ class GuildPlayer:
         is_stream = next_track.source_type == "stream" or next_track.filepath.startswith("http")
         before_opts = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5' if is_stream else None
 
+        ffmpeg_options = '-vn -loglevel error -nostdin'
+        if self.filter and self.filter in AUDIO_FILTERS:
+            ffmpeg_options += f' -af "{AUDIO_FILTERS[self.filter]}"'
+
         try:
             if before_opts:
                 source = discord.FFmpegPCMAudio(
                     next_track.filepath,
-                    options='-vn -loglevel error -nostdin',
+                    options=ffmpeg_options,
                     before_options=before_opts
                 )
             else:
                 source = discord.FFmpegPCMAudio(
                     next_track.filepath,
-                    options='-vn -loglevel error -nostdin'
+                    options=ffmpeg_options
                 )
             transformed = discord.PCMVolumeTransformer(source, volume=self.volume)
         except Exception as e:
@@ -133,7 +153,12 @@ class GuildPlayer:
             await self._play_next()
             return
 
-        def after_callback(error):
+        self._play_id += 1
+        current_play_id = self._play_id
+
+        def after_callback(error, play_id=current_play_id):
+            if self._play_id != play_id or self._is_reapplying_filter:
+                return
             if error:
                 print(f"Player error for guild {self.guild.id}: {error}")
             # Schedule next track without blocking the audio worker thread
@@ -149,7 +174,16 @@ class GuildPlayer:
 
         view = NowPlayingLayoutView(self)
 
-        target_channel = channel or getattr(self, "bound_channel", None) or (self.now_playing_message.channel if self.now_playing_message else None)
+        # If an active Now Playing card already exists from a previous song, delete it
+        # so the new song's player card is always posted fresh at the bottom of the chat
+        if self.now_playing_message:
+            try:
+                await self.now_playing_message.delete()
+            except Exception:
+                pass
+            self.now_playing_message = None
+
+        target_channel = channel or getattr(self, "bound_channel", None)
         if target_channel is None:
             # Fallback to first text channel bot can send messages to
             for ch in self.guild.text_channels:
@@ -226,14 +260,112 @@ class GuildPlayer:
         if self.current:
             self.queue.insert(0, self.current)
         self.queue.insert(0, prev_track)
+        
+        current_loop = self.loop_mode
+        if self.loop_mode == "track":
+            self.loop_mode = "off"
+            
         if self.voice_client and (self.voice_client.is_playing() or self.voice_client.is_paused()):
             self.voice_client.stop()
         else:
             await self._play_next()
+            
+        self.loop_mode = current_loop
+        return True
+
+    async def set_filter(self, filter_name: Optional[str], update_card: bool = True) -> bool:
+        """Applies an audio filter ('8d', 'bassboost', 'nightcore', 'vaporwave', 'pop', or 'clear'/None)."""
+        if filter_name == "clear" or not filter_name:
+            self.filter = None
+        elif filter_name in AUDIO_FILTERS:
+            self.filter = filter_name
+        else:
+            return False
+
+        if not self.current or not self.voice_client or not self.voice_client.is_connected():
+            if update_card:
+                await self.update_now_playing_card()
+            return True
+
+        if not (self.voice_client.is_playing() or self.voice_client.is_paused()):
+            if update_card:
+                await self.update_now_playing_card()
+            return True
+
+        # Re-create source at current playback position
+        elapsed = max(0.0, self.get_elapsed())
+        is_stream = self.current.source_type == "stream" or self.current.filepath.startswith("http")
+        
+        # Output seeking (-ss in options) prevents premature connection abort on HTTP audio streams
+        seek_str = f"-ss {int(elapsed)}" if elapsed > 1 else ""
+        before_opts = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5' if is_stream else None
+
+        ffmpeg_options = '-vn -loglevel error -nostdin'
+        if seek_str:
+            ffmpeg_options = f'{seek_str} {ffmpeg_options}'
+        if self.filter and self.filter in AUDIO_FILTERS:
+            ffmpeg_options += f' -af "{AUDIO_FILTERS[self.filter]}"'
+
+        try:
+            if before_opts:
+                source = discord.FFmpegPCMAudio(
+                    self.current.filepath,
+                    options=ffmpeg_options,
+                    before_options=before_opts
+                )
+            else:
+                source = discord.FFmpegPCMAudio(
+                    self.current.filepath,
+                    options=ffmpeg_options
+                )
+            transformed = discord.PCMVolumeTransformer(source, volume=self.volume)
+        except Exception as e:
+            print(f"Error reapplying audio filter: {e}")
+            return False
+
+        # Invalidate any callbacks from the old audio playback thread
+        self._play_id += 1
+        new_play_id = self._play_id
+        self._is_reapplying_filter = True
+        
+        was_paused = self.is_paused
+
+        try:
+            if self.voice_client and (self.voice_client.is_playing() or self.voice_client.is_paused()):
+                self.voice_client.stop()
+        except Exception as e:
+            print(f"Error stopping voice client for filter: {e}")
+        finally:
+            self._is_reapplying_filter = False
+
+        self._start_time = time.time() - elapsed
+        self._accumulated_pause = 0.0
+
+        def after_callback(error, play_id=new_play_id):
+            if self._play_id != play_id or self._is_reapplying_filter:
+                return
+            if error:
+                print(f"Player error for guild {self.guild.id}: {error}")
+            asyncio.run_coroutine_threadsafe(self._play_next(), self.bot.loop)
+
+        self.voice_client.play(transformed, after=after_callback)
+
+        if was_paused:
+            self.voice_client.pause()
+            self.is_paused = True
+            self._pause_time = time.time()
+        else:
+            self.is_paused = False
+            self._pause_time = 0.0
+
+        if update_card:
+            await self.update_now_playing_card()
+
         return True
 
     async def stop(self):
         """Stop music, clear queue, and reset state."""
+        self._play_id += 1
         self.queue.clear()
         self.current = None
         self.is_paused = False
@@ -281,6 +413,7 @@ class GuildPlayer:
 
     async def destroy(self):
         """Cleanup player resources."""
+        self._play_id += 1
         self._cancel_idle_timer()
         if self.voice_client and self.voice_client.is_connected():
             await self.voice_client.disconnect()
@@ -289,13 +422,17 @@ class GuildPlayer:
         self.current = None
 
 
+from typing import Optional, List, Dict, Any
+
 class PlayerManager:
     """Manages guild players across servers."""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._players: Dict[int, GuildPlayer] = {}
 
-    def get_player(self, guild: discord.Guild) -> GuildPlayer:
+    def get_player(self, guild: Any) -> GuildPlayer:
+        if not guild or not hasattr(guild, "id"):
+            raise ValueError("Invalid guild passed to get_player")
         if guild.id not in self._players:
             self._players[guild.id] = GuildPlayer(self.bot, guild)
         return self._players[guild.id]

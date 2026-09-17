@@ -10,6 +10,10 @@ from ui.theme import (
     COLOR_INFO,
     COLOR_ERROR,
     WAVEFORM,
+    EMOJI_MUSIC_DISC,
+    EMOJI_HEADSET,
+    EMOJI_QUEUE,
+    EMOJI_SETTINGS,
     make_progress_bar,
     make_volume_bar,
     format_time
@@ -21,7 +25,7 @@ def create_now_playing_embed(track: Track, elapsed: float = 0.0, bot_avatar_url:
     Constructs the Now Playing card matching the top-left panel of the reference UI.
     """
     embed = discord.Embed(
-        title="🎶 Now Playing",
+        title=f"{EMOJI_MUSIC_DISC} Now Playing",
         color=COLOR_PRIMARY
     )
     
@@ -126,7 +130,7 @@ def create_settings_embed(volume: float, loop_mode: str, autoplay: bool) -> disc
     Constructs the Settings card matching reference UI.
     """
     embed = discord.Embed(
-        title="⚙ Settings",
+        title=f"{EMOJI_SETTINGS} Settings",
         description="*Customize your listening experience*",
         color=COLOR_SETTINGS
     )
@@ -138,7 +142,7 @@ def create_settings_embed(volume: float, loop_mode: str, autoplay: bool) -> disc
         "queue": "Entire Queue 🔁"
     }.get(loop_mode, loop_mode.capitalize())
 
-    autoplay_display = "Enabled ✅" if autoplay else "Disabled ❌"
+    autoplay_display = f"Enabled {EMOJI_HEADSET}" if autoplay else "Disabled ❌"
 
     embed.add_field(
         name="🔊 Volume",
@@ -165,8 +169,8 @@ def create_help_embed() -> discord.Embed:
     Constructs the Command List card matching reference UI.
     """
     embed = discord.Embed(
-        title="📜 Command List",
-        description="*All commands support slash `/` and prefix `!`*",
+        title=f"{EMOJI_MUSIC_DISC} Command List",
+        description="*All commands support slash `/` and prefix `,`*",
         color=COLOR_PRIMARY
     )
 
@@ -184,7 +188,7 @@ def create_help_embed() -> discord.Embed:
     )
 
     embed.add_field(
-        name="📑 Queue",
+        name=f"{EMOJI_QUEUE} Queue",
         value=(
             "`/queue [page]` - View active playlist & track numbers\n"
             "`/nowplaying` - View interactive player card\n"
@@ -254,7 +258,7 @@ def create_nothing_playing_embed() -> discord.Embed:
 def create_queue_empty_embed() -> discord.Embed:
     """Deep indigo card: Queue is empty."""
     embed = discord.Embed(
-        title="📑 Queue is empty",
+        title=f"{EMOJI_QUEUE} Queue is empty",
         description="Add some tracks using `/play`.",
         color=COLOR_QUEUE
     )
@@ -274,7 +278,7 @@ def create_invalid_search_embed(query: str) -> discord.Embed:
 def create_track_queued_embed(track: Track, position: int) -> discord.Embed:
     """Vibrant emerald green card: Track Queued."""
     embed = discord.Embed(
-        title="✅ Track Queued",
+        title=f"{EMOJI_HEADSET} Track Queued",
         color=COLOR_SUCCESS
     )
     embed.description = (

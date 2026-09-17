@@ -2,8 +2,14 @@ from typing import List, Optional
 import discord
 from discord import ui
 
-from config import SUPPORT_SERVER_URL, POWERED_BY_TEXT, get_track_thumbnail
+from config import SUPPORT_SERVER_URL, get_track_thumbnail
 from music.track import Track
+from ui.theme import (
+    EMOJI_MUSIC_DISC, EMOJI_HEADSET, EMOJI_PAUSE, EMOJI_QUEUE, EMOJI_SETTINGS,
+    EMOJI_PREVIOUS, EMOJI_STOP, EMOJI_SHUFFLE, EMOJI_LOOP, EMOJI_TRASH,
+    EMOJI_VOLUME, EMOJI_MUSICNOTE, EMOJI_WARNING, EMOJI_FILTER, EMOJI_SPARKLES,
+    EMOJI_SEARCH, EMOJI_CROSS, EMOJI_WHITE_ARROW, EMOJI_SKIP
+)
 
 class NowPlayingLayoutView(ui.LayoutView):
     """
@@ -24,9 +30,9 @@ class NowPlayingLayoutView(ui.LayoutView):
         
         # 1. Header: 💽 Now Playing (or ⏸️ Paused)
         if self.player.is_paused:
-            header = ui.TextDisplay("### :pause_button: Paused")
+            header = ui.TextDisplay(f"### {EMOJI_PAUSE} Paused")
         else:
-            header = ui.TextDisplay("### :minidisc: Now Playing")
+            header = ui.TextDisplay(f"### {EMOJI_MUSIC_DISC} Now Playing")
         container.add_item(header)
         
         track = self.player.current
@@ -49,15 +55,14 @@ class NowPlayingLayoutView(ui.LayoutView):
         else:
             container.add_item(ui.TextDisplay("> *Nothing is currently playing.*"))
             
-        # 2. Powered by footer
-        footer = ui.TextDisplay(POWERED_BY_TEXT)
-        container.add_item(footer)
+        # 2. Action Row 1: Prev, Pause (In red color), Next, Loop, Shuffle
+        btn_prev = ui.Button(label="Prev", emoji=discord.PartialEmoji.from_str(EMOJI_PREVIOUS), style=discord.ButtonStyle.secondary, custom_id="v2_prev")
         
-        # 3. Action Row: Pause/Resume, Skip, Loop, Shuffle
         pause_label = "Resume" if self.player.is_paused else "Pause"
-        pause_style = discord.ButtonStyle.primary if self.player.is_paused else discord.ButtonStyle.secondary
-        btn_pause = ui.Button(label=pause_label, style=pause_style, custom_id="v2_pause")
-        btn_skip = ui.Button(label="Skip", style=discord.ButtonStyle.secondary, custom_id="v2_skip")
+        pause_style = discord.ButtonStyle.success if self.player.is_paused else discord.ButtonStyle.danger
+        btn_pause = ui.Button(label=pause_label, emoji=discord.PartialEmoji.from_str(EMOJI_PAUSE), style=pause_style, custom_id="v2_pause")
+        
+        btn_next = ui.Button(label="Next", emoji=discord.PartialEmoji.from_str(EMOJI_SKIP), style=discord.ButtonStyle.secondary, custom_id="v2_next")
         
         loop_labels = {
             "off": "Loop",
@@ -65,17 +70,84 @@ class NowPlayingLayoutView(ui.LayoutView):
             "queue": "Loop: All"
         }
         loop_label = loop_labels.get(self.player.loop_mode, "Loop")
-        btn_loop = ui.Button(label=loop_label, style=discord.ButtonStyle.secondary, custom_id="v2_loop")
+        loop_style = discord.ButtonStyle.primary if self.player.loop_mode != "off" else discord.ButtonStyle.secondary
+        btn_loop = ui.Button(label=loop_label, emoji=discord.PartialEmoji.from_str(EMOJI_LOOP), style=loop_style, custom_id="v2_loop")
         
-        btn_shuffle = ui.Button(label="Shuffle", style=discord.ButtonStyle.secondary, custom_id="v2_shuffle")
+        btn_shuffle = ui.Button(label="Shuffle", emoji=discord.PartialEmoji.from_str(EMOJI_SHUFFLE), style=discord.ButtonStyle.secondary, custom_id="v2_shuffle")
         
+        btn_prev.callback = self.on_prev
         btn_pause.callback = self.on_pause
-        btn_skip.callback = self.on_skip
+        btn_next.callback = self.on_next
         btn_loop.callback = self.on_loop
         btn_shuffle.callback = self.on_shuffle
         
-        row = ui.ActionRow(btn_pause, btn_skip, btn_loop, btn_shuffle)
-        container.add_item(row)
+        row_buttons = ui.ActionRow(btn_prev, btn_pause, btn_next, btn_loop, btn_shuffle)
+        container.add_item(row_buttons)
+
+        # 3. Action Row 2: Audio Filters Dropdown
+        current_filter = getattr(self.player, "filter", None)
+        filter_options = [
+            discord.SelectOption(
+                label="8D Audio",
+                value="8d",
+                description="Rotating 8D surround sound effect",
+                emoji=discord.PartialEmoji.from_str(EMOJI_HEADSET),
+                default=(current_filter == "8d")
+            ),
+            discord.SelectOption(
+                label="Bass Boost",
+                value="bassboost",
+                description="Deep low-frequency punch & bass enhancement",
+                emoji=discord.PartialEmoji.from_str(EMOJI_VOLUME),
+                default=(current_filter == "bassboost")
+            ),
+            discord.SelectOption(
+                label="Nightcore",
+                value="nightcore",
+                description="High pitch and 25% faster tempo",
+                emoji=discord.PartialEmoji.from_str(EMOJI_SPARKLES),
+                default=(current_filter == "nightcore")
+            ),
+            discord.SelectOption(
+                label="Vaporwave",
+                value="vaporwave",
+                description="Slowed down with relaxing lo-fi aesthetics",
+                emoji="🌴",
+                default=(current_filter == "vaporwave")
+            ),
+            discord.SelectOption(
+                label="Pop / Vocal Boost",
+                value="pop",
+                description="Crisp vocals and bright treble clarity",
+                emoji="🎤",
+                default=(current_filter == "pop")
+            ),
+            discord.SelectOption(
+                label="Clear Filters",
+                value="clear",
+                description="Remove all active audio filters",
+                emoji=discord.PartialEmoji.from_str(EMOJI_CROSS),
+                default=False
+            ),
+        ]
+        
+        filter_display_names = {
+            "8d": "8D Audio",
+            "bassboost": "Bass Boost",
+            "nightcore": "Nightcore",
+            "vaporwave": "Vaporwave",
+            "pop": "Pop / Vocal Boost",
+        }
+        active_display = filter_display_names.get(current_filter) if current_filter else None
+        placeholder = f"Active Filter: {active_display}" if active_display else "Choose Audio Filter (Active: None)"
+        select_filter = ui.Select(
+            placeholder=placeholder,
+            options=filter_options,
+            custom_id="v2_filter"
+        )
+        select_filter.callback = self.on_filter_select
+        row_filter = ui.ActionRow(select_filter)
+        container.add_item(row_filter)
         
         self.add_item(container)
 
@@ -99,6 +171,14 @@ class NowPlayingLayoutView(ui.LayoutView):
             return False
         return True
 
+    async def on_prev(self, interaction: discord.Interaction):
+        if not self._check_voice(interaction):
+            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+        if not self.player.history:
+            return await interaction.response.send_message("❌ No previous track in history.", ephemeral=True)
+        await interaction.response.defer()
+        await self.player.previous()
+
     async def on_pause(self, interaction: discord.Interaction):
         if not self._check_voice(interaction):
             return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
@@ -114,15 +194,15 @@ class NowPlayingLayoutView(ui.LayoutView):
         self.rebuild()
         await interaction.response.edit_message(view=self)
 
-    async def on_skip(self, interaction: discord.Interaction):
+    async def on_next(self, interaction: discord.Interaction):
         if not self._check_voice(interaction):
             return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
             
-        skipped = await self.player.skip()
-        if skipped:
-            await interaction.response.send_message(f"⏭️ Skipped **{skipped.title}**", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Nothing is playing.", ephemeral=True)
+        await interaction.response.defer()
+        await self.player.skip()
+
+    # Alias on_skip for backward compatibility
+    on_skip = on_next
 
     async def on_stop(self, interaction: discord.Interaction):
         """Legacy handler: if an old stop button is clicked, pause instead of destroying the player card."""
@@ -141,7 +221,28 @@ class NowPlayingLayoutView(ui.LayoutView):
             return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
             
         self.player.shuffle_queue()
-        await interaction.response.send_message("🔀 Queue has been shuffled!", ephemeral=True)
+        await interaction.response.defer()
+
+    async def on_filter_select(self, interaction: discord.Interaction):
+        if not self._check_voice(interaction):
+            return await interaction.response.send_message("❌ You must be in the same voice channel!", ephemeral=True)
+        
+        if not self.player.current:
+            return await interaction.response.send_message("❌ Nothing is currently playing!", ephemeral=True)
+
+        values = interaction.data.get("values", []) if interaction.data else []
+        chosen = values[0] if values else "clear"
+        
+        await self.player.set_filter(chosen, update_card=False)
+        
+        if interaction.message:
+            self.player.now_playing_message = interaction.message
+
+        self.rebuild()
+        if not interaction.response.is_done():
+            await interaction.response.edit_message(view=self)
+        elif self.player.now_playing_message:
+            await self.player.now_playing_message.edit(view=self)
 
 
 class QueueLayoutView(ui.LayoutView):
@@ -159,7 +260,7 @@ class QueueLayoutView(ui.LayoutView):
         container = ui.Container()
         
         # Header
-        container.add_item(ui.TextDisplay("### :hash: Current Queue"))
+        container.add_item(ui.TextDisplay(f"### {EMOJI_QUEUE} Current Queue"))
         
         all_tracks = []
         if self.player.current:
@@ -172,7 +273,7 @@ class QueueLayoutView(ui.LayoutView):
             lines = []
             if self.player.current and self.current_page == 1:
                 lines.append(f"> **Now Playing:**")
-                lines.append(f"> ▶ **[{self.player.current.title}]({SUPPORT_SERVER_URL})** - `{self.player.current.artist}` (`{self.player.current.formatted_duration}`)\n")
+                lines.append(f"> {EMOJI_WHITE_ARROW} **[{self.player.current.title}]({SUPPORT_SERVER_URL})** - `{self.player.current.artist}` (`{self.player.current.formatted_duration}`)\n")
                 if self.player.queue:
                     lines.append(f"> **Up Next:**")
             
@@ -188,10 +289,10 @@ class QueueLayoutView(ui.LayoutView):
             container.add_item(ui.TextDisplay("\n".join(lines)))
             
         # Navigation buttons
-        btn_prev = ui.Button(label="◀ Previous", style=discord.ButtonStyle.secondary, disabled=(self.current_page <= 1))
+        btn_prev = ui.Button(label="Previous", emoji=discord.PartialEmoji.from_str(EMOJI_PREVIOUS), style=discord.ButtonStyle.secondary, disabled=(self.current_page <= 1))
         total_pages = max(1, (len(self.player.queue) + 4) // 5) if self.player.queue else 1
-        btn_next = ui.Button(label="Next ▶", style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages))
-        btn_clear = ui.Button(label="Clear Queue", style=discord.ButtonStyle.danger)
+        btn_next = ui.Button(label="Next", emoji=discord.PartialEmoji.from_str(EMOJI_SKIP), style=discord.ButtonStyle.secondary, disabled=(self.current_page >= total_pages))
+        btn_clear = ui.Button(label="Clear Queue", emoji=discord.PartialEmoji.from_str(EMOJI_TRASH), style=discord.ButtonStyle.danger)
         
         btn_prev.callback = self.on_prev
         btn_next.callback = self.on_next
@@ -236,7 +337,7 @@ class SearchLayoutView(ui.LayoutView):
         self.clear_items()
         container = ui.Container()
         
-        container.add_item(ui.TextDisplay(f"### :mag: Search Results for `{self.query}`"))
+        container.add_item(ui.TextDisplay(f"### {EMOJI_SEARCH} Search Results for `{self.query}`"))
         
         lines = []
         for idx, t in enumerate(self.tracks[:5], start=1):
@@ -263,9 +364,9 @@ class SearchLayoutView(ui.LayoutView):
     def make_callback(self, index: int):
         async def callback(interaction: discord.Interaction):
             if self.user and interaction.user.id != self.user.id:
-                return await interaction.response.send_message("❌ This search is for someone else!", ephemeral=True)
+                return await interaction.response.send_message(f"{EMOJI_CROSS} This search is for someone else!", ephemeral=True)
             if not getattr(interaction.user, "voice", None) or not interaction.user.voice.channel:
-                return await interaction.response.send_message("❌ You must be in a voice channel!", ephemeral=True)
+                return await interaction.response.send_message(f"{EMOJI_CROSS} You must be in a voice channel!", ephemeral=True)
                 
             track_data = self.tracks[index]
             track = Track(
@@ -277,19 +378,32 @@ class SearchLayoutView(ui.LayoutView):
             )
             
             position = len(self.player.queue) + (1 if self.player.current else 0)
-            await self.player.add_track(track)
+            started = await self.player.add_track(track)
             
-            view = StatusLayoutView(
-                title="### :white_check_mark: Track Queued",
-                description=(
-                    f"> **[{track.title}]({SUPPORT_SERVER_URL})** - `{track.artist}`\n"
-                    f"> Duration: `{track.formatted_duration}`\n"
-                    f"> Position in queue: `#{position}`\n\n"
-                    f"-# Added to queue successfully!"
-                ),
-                thumbnail_url=get_track_thumbnail(track.title, track.artist)
-            )
-            await interaction.response.edit_message(view=view)
+            try:
+                if interaction.message:
+                    await interaction.message.delete()
+            except Exception:
+                pass
+
+            if not started:
+                view = StatusLayoutView(
+                    title=f"### {EMOJI_HEADSET} Track Queued",
+                    description=(
+                        f"> **[{track.title}]({SUPPORT_SERVER_URL})** - `{track.artist}`\n"
+                        f"> Duration: `{track.formatted_duration}`\n"
+                        f"> Position in queue: `#{position}`\n\n"
+                        f"-# Added to queue successfully!"
+                    ),
+                    thumbnail_url=get_track_thumbnail(track.title, track.artist)
+                )
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(view=view)
+                elif interaction.channel:
+                    await interaction.channel.send(view=view)
+            else:
+                if not interaction.response.is_done():
+                    await interaction.response.defer()
         return callback
 
 
@@ -303,10 +417,10 @@ class StatusLayoutView(ui.LayoutView):
         container.add_item(ui.TextDisplay(title))
         
         if thumbnail_url:
-            media_item = discord.MediaGalleryItem(thumbnail_url)
-            container.add_item(ui.MediaGallery(media_item))
-        
-        container.add_item(ui.TextDisplay(description))
+            section = ui.Section(ui.TextDisplay(description), accessory=ui.Thumbnail(thumbnail_url))
+            container.add_item(section)
+        else:
+            container.add_item(ui.TextDisplay(description))
         self.add_item(container)
 
 
@@ -322,7 +436,7 @@ class SettingsLayoutView(ui.LayoutView):
     def rebuild(self):
         self.clear_items()
         container = ui.Container()
-        container.add_item(ui.TextDisplay("### :gear: Audio Settings"))
+        container.add_item(ui.TextDisplay(f"### {EMOJI_SETTINGS} Audio Settings"))
 
         vol_pct = int(self.player.volume * 100)
         loop_display = {
@@ -340,9 +454,9 @@ class SettingsLayoutView(ui.LayoutView):
         container.add_item(ui.TextDisplay(content))
 
         btn_voldown = ui.Button(label="Vol -10%", style=discord.ButtonStyle.secondary)
-        btn_volup = ui.Button(label="Vol +10%", style=discord.ButtonStyle.secondary)
-        btn_loop = ui.Button(label="Loop Mode", style=discord.ButtonStyle.secondary)
-        btn_autoplay = ui.Button(label="Autoplay", style=discord.ButtonStyle.secondary)
+        btn_volup = ui.Button(label="Vol +10%", emoji=discord.PartialEmoji.from_str(EMOJI_VOLUME), style=discord.ButtonStyle.secondary)
+        btn_loop = ui.Button(label="Loop Mode", emoji=discord.PartialEmoji.from_str(EMOJI_LOOP), style=discord.ButtonStyle.secondary)
+        btn_autoplay = ui.Button(label="Autoplay", emoji=discord.PartialEmoji.from_str(EMOJI_SPARKLES), style=discord.ButtonStyle.secondary)
 
         btn_voldown.callback = self.on_voldown
         btn_volup.callback = self.on_volup
@@ -393,71 +507,114 @@ class HelpDashboardLayoutView(ui.LayoutView):
         guild_count = len(self.bot.guilds) if self.bot and hasattr(self.bot, "guilds") else 1
 
         if self.current_module == "overview":
-            container.add_item(ui.TextDisplay("### :minidisc: Bellion Music - Help Dashboard"))
-            info_text = (
+            container.add_item(ui.TextDisplay(f"### {EMOJI_MUSIC_DISC} Bellion Music — Help Dashboard"))
+            overview_lines = [
                 f"> **Bot Name:** `Bellion`\n"
                 f"> **Command Prefix:** `,` (comma)\n"
                 f"> **Gateway Latency:** `{latency_str}`\n"
                 f"> **Active Guilds:** `{guild_count}`\n"
-                f"> **Interface:** Discord Components V2 (No Embeds)\n\n"
-                f"**Select a command module below:**\n"
-                f"• :musical_note: **Music Module** — Playback, pause, resume, skip, stop\n"
-                f"• :bookmark_tabs: **Queue Module** — Queue management, loop, autoplay, shuffle\n"
-                f"• :gear: **Utility Module** — Latency image ping, invite, support, info"
-            )
-            container.add_item(ui.TextDisplay(info_text))
+                f"> **Engine:** Discord Components V2 (Rich Interactive Layouts)",
+                
+                "**Command Modules:**\n"
+                f"• {EMOJI_MUSIC_DISC} **Music Module** — Playback, pause, resume, skip, prev, stop, filter\n\n"
+                f"• {EMOJI_QUEUE} **Queue Module** — Upcoming queue, clear, shuffle, loop, autoplay\n\n"
+                f"• {EMOJI_SETTINGS} **Utility Module** — Join voice, latency ping, settings, invite, support",
+                
+                "-# *Click the navigation buttons below to view module commands.*"
+            ]
+            container.add_item(ui.TextDisplay("\n\n".join(overview_lines)))
 
         elif self.current_module == "music":
-            container.add_item(ui.TextDisplay("### :musical_note: Music Commands Module"))
-            music_text = (
-                "> `,play <song name / any link>` (alias: `,p`) — Plays local audio tracks or web streams\n"
-                "> `,pause` — Pauses current song playback\n"
-                "> `,resume` — Resumes paused track playback\n"
-                "> `,skip <Number>` (alias: `,s`) — Skips the given number of songs (default: 1)\n"
-                "> `,stop` (aliases: `,disconnect`, `,dc`, `,leave`) — Stops music and leaves voice channel\n"
-                "> `,nowplaying` (alias: `,np`) — Displays the active player card"
-            )
-            container.add_item(ui.TextDisplay(music_text))
+            container.add_item(ui.TextDisplay(f"### {EMOJI_MUSIC_DISC} Music Commands Module"))
+            music_lines = [
+                "> **`,play <song name / link>`** `(alias: ,p)`\n"
+                "> Streams high quality audio from YouTube, Spotify, or local files.",
+                
+                "> **`,pause`**\n"
+                "> Pauses the currently playing track.",
+                
+                "> **`,resume`**\n"
+                "> Resumes playback of the paused track.",
+                
+                "> **`,skip [amount]`** `(alias: ,s)`\n"
+                "> Skips the current track (or given number of songs).",
+                
+                "> **`,previous`** `(alias: ,prev)`\n"
+                "> Plays the previously played track from history.",
+                
+                "> **`,stop`** `(aliases: ,disconnect, ,dc, ,leave)`\n"
+                "> Stops playback, clears the queue, and leaves voice channel.",
+                
+                "> **`,nowplaying`** `(alias: ,np)`\n"
+                "> Displays the active player card with buttons & filter controls.",
+                
+                "> **`,filter [preset]`** `(alias: ,filters)`\n"
+                "> Apply audio effects: `8d`, `bassboost`, `nightcore`, `vaporwave`, `pop`, `clear`."
+            ]
+            container.add_item(ui.TextDisplay("\n\n".join(music_lines)))
 
         elif self.current_module == "queue":
-            container.add_item(ui.TextDisplay("### :bookmark_tabs: Queue & Playback Module"))
-            queue_text = (
-                "> `,queue` — Displays upcoming tracks with interactive page navigation\n"
-                "> `,clear` — Clears all songs from the upcoming queue\n"
-                "> `,shuffle` — Shuffles the order of tracks in the queue\n"
-                "> `,loop` — Loops the current track (toggles repeat)\n"
-                "> `,autoplay` — Plays similar songs automatically when the queue finishes"
-            )
-            container.add_item(ui.TextDisplay(queue_text))
+            container.add_item(ui.TextDisplay(f"### {EMOJI_QUEUE} Queue & Playback Module"))
+            queue_lines = [
+                "> **`,queue [page]`** `(alias: ,q)`\n"
+                "> Displays upcoming songs with interactive page navigation buttons.",
+                
+                "> **`,clear`**\n"
+                "> Clears all upcoming tracks from the queue immediately.",
+                
+                "> **`,shuffle`**\n"
+                "> Shuffles the remaining tracks in the queue into a random order.",
+                
+                "> **`,loop`**\n"
+                "> Cycles repeat mode: `off` ➔ `track (repeat single)` ➔ `queue (repeat all)`.",
+                
+                "> **`,autoplay`**\n"
+                "> Automatically discovers and queues similar songs when the playlist ends."
+            ]
+            container.add_item(ui.TextDisplay("\n\n".join(queue_lines)))
 
         elif self.current_module == "utility":
-            container.add_item(ui.TextDisplay("### :gear: Utility & Info Module"))
-            util_text = (
-                "> `,help` — Opens this interactive help dashboard\n"
-                "> `,ping` — Renders and displays gateway latency in image format\n"
-                "> `,invite` — DMs the command runner the bot OAuth2 invite link\n"
-                "> `,support` — DMs the command runner the official support server invite\n"
-                "> `,settings` — Opens the audio volume, loop, and autoplay configuration card"
-            )
-            container.add_item(ui.TextDisplay(util_text))
-
-        container.add_item(ui.TextDisplay(POWERED_BY_TEXT))
+            container.add_item(ui.TextDisplay(f"### {EMOJI_SETTINGS} Utility & Info Module"))
+            util_lines = [
+                "> **`,help`** `(alias: ,h)`\n"
+                "> Opens this interactive help dashboard with command modules.",
+                
+                "> **`,join`** `(aliases: ,connect, ,j)`\n"
+                "> Connects the bot directly to your current voice channel.",
+                
+                "> **`,ping`**\n"
+                "> Renders dynamic image card displaying Discord gateway latency.",
+                
+                "> **`,settings`**\n"
+                "> Configure volume, repeat loop mode, and autoplay preferences.",
+                
+                "> **`,invite`**\n"
+                "> DMs you a direct invite link to add Bellion to your server.",
+                
+                "> **`,support`**\n"
+                "> DMs you an invite link to the official Bellion support community."
+            ]
+            container.add_item(ui.TextDisplay("\n\n".join(util_lines)))
 
         # Module navigation buttons
         btn_overview = ui.Button(
             label="Overview",
+            emoji=discord.PartialEmoji.from_str(EMOJI_WHITE_ARROW),
             style=discord.ButtonStyle.primary if self.current_module == "overview" else discord.ButtonStyle.secondary
         )
         btn_music = ui.Button(
             label="Music",
+            emoji=discord.PartialEmoji.from_str(EMOJI_MUSICNOTE),
             style=discord.ButtonStyle.primary if self.current_module == "music" else discord.ButtonStyle.secondary
         )
         btn_queue = ui.Button(
             label="Queue",
+            emoji=discord.PartialEmoji.from_str(EMOJI_QUEUE),
             style=discord.ButtonStyle.primary if self.current_module == "queue" else discord.ButtonStyle.secondary
         )
         btn_util = ui.Button(
             label="Utility",
+            emoji=discord.PartialEmoji.from_str(EMOJI_SETTINGS),
             style=discord.ButtonStyle.primary if self.current_module == "utility" else discord.ButtonStyle.secondary
         )
 

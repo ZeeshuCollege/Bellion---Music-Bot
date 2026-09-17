@@ -14,6 +14,7 @@ from discord.ext import commands
 from config import DISCORD_TOKEN, MASTER_ID, BOT_NAME
 from music.player import PlayerManager
 from music.library import library
+from ui.theme import EMOJI_HEADSET, EMOJI_CROSS, EMOJI_SEARCH
 
 # Configure Logging
 logging.basicConfig(
@@ -119,21 +120,21 @@ async def start_bot(message_content: bool):
     @bot.command(name="sync")
     async def sync_cmd(ctx: commands.Context):
         if ctx.author.id == MASTER_ID or (ctx.guild and ctx.author.guild_permissions.administrator):
-            msg = await ctx.send("🔄 Syncing slash commands globally...")
+            msg = await ctx.send(f"{EMOJI_SEARCH} Syncing slash commands globally...")
             synced = await bot.tree.sync()
-            await msg.edit(content=f"✅ Successfully synced {len(synced)} slash commands globally!")
+            await msg.edit(content=f"{EMOJI_HEADSET} Successfully synced {len(synced)} slash commands globally!")
         else:
-            await ctx.send("❌ Only the Bot Master or an Administrator can use `,sync`.")
+            await ctx.send(f"{EMOJI_CROSS} Only the Bot Master or an Administrator can use `,sync`.")
 
     # Global tree error handler
     @bot.tree.error
     async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
         logger.error(f"Slash command error: {error}")
-        msg = "❌ An unexpected error occurred while processing this command."
+        msg = f"{EMOJI_CROSS} An unexpected error occurred while processing this command."
         if isinstance(error, discord.app_commands.CommandOnCooldown):
             msg = f"⏳ Command is on cooldown. Try again in {error.retry_after:.1f}s."
         elif isinstance(error, discord.app_commands.MissingPermissions):
-            msg = "❌ You lack the necessary permissions to use this command."
+            msg = f"{EMOJI_CROSS} You lack the necessary permissions to use this command."
         
         try:
             if interaction.response.is_done():

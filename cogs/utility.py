@@ -5,6 +5,7 @@ from discord.ext import commands
 from config import SUPPORT_SERVER_URL
 from music.player import PlayerManager
 from ui.image_generator import generate_ping_card
+from ui.theme import EMOJI_HEADSET, EMOJI_CROSS
 from ui.views import SettingsLayoutView, HelpDashboardLayoutView, StatusLayoutView
 
 class UtilityCog(commands.Cog, name="Utility"):
@@ -37,10 +38,10 @@ class UtilityCog(commands.Cog, name="Utility"):
         invite_url = self._get_invite_url()
         try:
             await interaction.user.send(f"📬 **Here is the invite link for Bellion:**\n{invite_url}")
-            await interaction.response.send_message("✅ I have sent the invite link to your DMs!", ephemeral=True)
+            await interaction.response.send_message(f"{EMOJI_HEADSET} I have sent the invite link to your DMs!", ephemeral=True)
         except discord.Forbidden:
             await interaction.response.send_message(
-                f"❌ Could not DM you. Please enable DMs from server members!\n**Invite Link:** {invite_url}",
+                f"{EMOJI_CROSS} Could not DM you. Please enable DMs from server members!\n**Invite Link:** {invite_url}",
                 ephemeral=True
             )
 
@@ -48,10 +49,10 @@ class UtilityCog(commands.Cog, name="Utility"):
     async def support_slash(self, interaction: discord.Interaction):
         try:
             await interaction.user.send(f"🛡️ **Join the official Bellion Support Server:**\n{SUPPORT_SERVER_URL}")
-            await interaction.response.send_message("✅ I have sent the support server link to your DMs!", ephemeral=True)
+            await interaction.response.send_message(f"{EMOJI_HEADSET} I have sent the support server link to your DMs!", ephemeral=True)
         except discord.Forbidden:
             await interaction.response.send_message(
-                f"❌ Could not DM you. Please enable DMs from server members!\n**Support Server:** {SUPPORT_SERVER_URL}",
+                f"{EMOJI_CROSS} Could not DM you. Please enable DMs from server members!\n**Support Server:** {SUPPORT_SERVER_URL}",
                 ephemeral=True
             )
 
@@ -61,17 +62,17 @@ class UtilityCog(commands.Cog, name="Utility"):
         view = SettingsLayoutView(player)
         await interaction.response.send_message(view=view)
 
-    # ================== Prefix Commands (,) ==================
+    # ================== Prefix Commands ==================
 
     @commands.command(name="help", aliases=["h"])
     async def help_prefix(self, ctx: commands.Context):
-        """Opens help dashboard with bot information and modules for every command"""
+        """Interactive Help Dashboard with modular command listings"""
         view = HelpDashboardLayoutView(bot=self.bot)
         await ctx.send(view=view)
 
     @commands.command(name="ping")
     async def ping_prefix(self, ctx: commands.Context):
-        """Shows the bot latency in image format"""
+        """Check Gateway latency in dynamic image format"""
         latency_ms = round(self.bot.latency * 1000)
         buf = generate_ping_card(latency_ms, len(self.bot.guilds))
         file = discord.File(fp=buf, filename="ping.png")
@@ -83,18 +84,18 @@ class UtilityCog(commands.Cog, name="Utility"):
         invite_url = self._get_invite_url()
         try:
             await ctx.author.send(f"📬 **Here is the invite link for Bellion:**\n{invite_url}")
-            await ctx.send(f"✅ I have sent the invite link to your DMs, {ctx.author.mention}!")
+            await ctx.send(f"{EMOJI_HEADSET} I have sent the invite link to your DMs, {ctx.author.mention}!")
         except discord.Forbidden:
-            await ctx.send(f"❌ Could not DM you, {ctx.author.mention}. Please enable DMs from server members!\n{invite_url}")
+            await ctx.send(f"{EMOJI_CROSS} Could not DM you, {ctx.author.mention}. Please enable DMs from server members!\n{invite_url}")
 
     @commands.command(name="support")
     async def support_prefix(self, ctx: commands.Context):
         """DM the command user the link of the support server"""
         try:
             await ctx.author.send(f"🛡️ **Join the official Bellion Support Server:**\n{SUPPORT_SERVER_URL}")
-            await ctx.send(f"✅ I have sent the support server link to your DMs, {ctx.author.mention}!")
+            await ctx.send(f"{EMOJI_HEADSET} I have sent the support server link to your DMs, {ctx.author.mention}!")
         except discord.Forbidden:
-            await ctx.send(f"❌ Could not DM you, {ctx.author.mention}. Please enable DMs from server members!\n{SUPPORT_SERVER_URL}")
+            await ctx.send(f"{EMOJI_CROSS} Could not DM you, {ctx.author.mention}. Please enable DMs from server members!\n{SUPPORT_SERVER_URL}")
 
     @commands.command(name="settings")
     async def settings_prefix(self, ctx: commands.Context):
